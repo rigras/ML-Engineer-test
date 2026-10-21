@@ -23,6 +23,8 @@ dependencies = [
     "sentence-transformers>=6.2,<7",
     "torch>=2.14,<3",
     "chromadb>=1.5.9,<1.6",
+    # LLM client for any OpenAI-compatible endpoint (Groq by default) — ADR-010
+    "openai>=3.36,<4",
 ]
 
 [project.optional-dependencies]
@@ -123,6 +125,9 @@ forbidden_modules = [
     "torch",
     "transformers",
     "numpy",
+    "openai",
+    "httpx",
+    "httpx2",
 ]
 
 [[tool.importlinter.contracts]]

@@ -6,6 +6,7 @@ from collections.abc import Iterator, Mapping, Sequence
 from app.domain.chunking import Chunk
 from app.domain.document import Page, PageImage, PdfInfo, Word
 from app.domain.geometry import BoundingBox
+from app.domain.grounding import LlmReply, Prompt
 from app.domain.persons import PersonSpan
 
 PAGE_WIDTH_PT = 612.0
@@ -154,3 +155,18 @@ class FakeReranker:
     def score(self, question: str, texts: Sequence[str]) -> list[float]:
         self.calls.append(list(texts))
         return [self.scores.get(text, self.default) for text in texts]
+
+
+class FakeAnswerGenerator:
+    """Replies with a scripted text (or raises ``error``); records the prompts it got."""
+
+    def __init__(self, reply: str = "", error: Exception | None = None) -> None:
+        self.reply = reply
+        self.error = error
+        self.prompts: list[Prompt] = []
+
+    def generate(self, prompt: Prompt) -> LlmReply:
+        self.prompts.append(prompt)
+        if self.error is not None:
+            raise self.error
+        return LlmReply(self.reply, "fake-llm", prompt_tokens=100, completion_tokens=10)

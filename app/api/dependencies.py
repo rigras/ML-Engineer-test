@@ -11,6 +11,7 @@ from typing import Annotated, cast
 from fastapi import Depends, Request
 
 from app.api.upload import UploadLimits
+from app.application.answer_question import AnswerQuestion
 from app.application.extract_names import ExtractNames
 from app.application.ingest_document import IngestDocument
 from app.application.ports import PdfRasterizer
@@ -24,6 +25,7 @@ class Container:
     rasterizer: PdfRasterizer
     extract_names: ExtractNames
     ingest_document: IngestDocument
+    answer_question: AnswerQuestion
     # Run by the lifespan at shutdown, e.g. to release the vector store's files.
     on_shutdown: tuple[Callable[[], None], ...] = ()
 

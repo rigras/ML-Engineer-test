@@ -17,10 +17,14 @@ from app.api.health import router as health_router
 from app.api.middleware import RequestIdMiddleware
 from app.api.rag import router as rag_router
 from app.api.upload import UploadLimits
+from app.application.answer_question import AnswerQuestion
 from app.application.extract_names import ExtractNames
 from app.application.ingest_document import IngestDocument
+from app.application.retrieve_chunks import RetrieveChunks
 from app.infrastructure.chroma_vector_store import ChromaVectorStore
+from app.infrastructure.cross_encoder_reranker import CrossEncoderReranker
 from app.infrastructure.logging import configure_logging
+from app.infrastructure.openai_answer_generator import OpenAiCompatibleAnswerGenerator
 from app.infrastructure.pymupdf_rasterizer import PyMuPdfRasterizer
 from app.infrastructure.sentence_transformer_embedder import SentenceTransformerEmbedder
 from app.infrastructure.settings import Settings, load_settings
@@ -57,13 +61,37 @@ def build_container(settings: Settings) -> Container:
         dpi=settings.render_dpi,
         max_tokens=settings.chunk_max_tokens,
     )
+    retrieve = RetrieveChunks(
+        embedder=embedder,
+        store=store,
+        reranker=CrossEncoderReranker(settings.reranker_model),
+        candidates=settings.retrieval_candidates,
+        top_k=settings.top_k,
+        min_score=settings.rerank_min_score,
+    )
+    generator = OpenAiCompatibleAnswerGenerator(
+        base_url=settings.llm_base_url,
+        api_key=_llm_api_key(settings),
+        model=settings.llm_model,
+        timeout_seconds=settings.llm_timeout_seconds,
+        max_retries=settings.llm_max_retries,
+    )
     return Container(
         upload_limits=UploadLimits(settings.max_upload_bytes, settings.max_pages),
         rasterizer=rasterizer,
         extract_names=extract_names,
         ingest_document=ingest_document,
+        answer_question=AnswerQuestion(retrieve, generator),
         on_shutdown=(store.close,),
     )
+
+
+def _llm_api_key(settings: Settings) -> str | None:
+    """The configured key, or ``None`` (an empty value counts as missing)."""
+    key = settings.llm_api_key.get_secret_value() if settings.llm_api_key else ""
+    if not key:
+        logger.warning("llm_not_configured")  # /ask will answer 503 when it needs the LLM
+    return key or None
 
 
 def create_app(

@@ -4,6 +4,7 @@ import json
 
 from pydantic import TypeAdapter, ValidationError
 
+from app.application.answer_question import Answer
 from app.application.extract_names import ExtractionResult
 from app.application.ingest_document import IngestResult
 from app.domain.errors import NamesInvalid
@@ -64,3 +65,8 @@ def to_extraction_response(result: ExtractionResult) -> schemas.ExtractionRespon
 def to_ingest_response(result: IngestResult) -> schemas.IngestResponse:
     """Map an ingestion to ``IngestResponse``; re-ingesting the same PDF reports the same count."""
     return schemas.IngestResponse(status="ingested", chunks_stored=result.chunk_count)
+
+
+def to_rag_response(answer: Answer) -> schemas.RAGResponse:
+    """Map an answer to ``RAGResponse``; ``sources`` are always built by code (ADR-006)."""
+    return schemas.RAGResponse(answer=answer.text, sources=list(answer.sources))

@@ -6,7 +6,7 @@ and a ``.env`` file is honoured. Read once at startup by the composition root.
 
 from typing import Literal
 
-from pydantic import Field, ValidationError
+from pydantic import Field, SecretStr, ValidationError
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from app.domain.errors import InfrastructureError
@@ -51,6 +51,12 @@ class Settings(BaseSettings):
     top_k: int = Field(default=5, gt=0)  # chunks sent to the LLM
     # Relevance gate on the reranker's raw score, calibrated by scripts/eval_retrieval.py.
     rerank_min_score: float = -2.59
+    # LLM: any OpenAI-compatible endpoint; Groq by default (ADR-010)
+    llm_base_url: str = Field(default="https://api.groq.com/openai/v1", min_length=1)
+    llm_api_key: SecretStr | None = None
+    llm_model: str = Field(default="llama-3.3-70b-versatile", min_length=1)
+    llm_timeout_seconds: float = Field(default=30.0, gt=0.0)
+    llm_max_retries: int = Field(default=2, ge=0)
 
 
 def load_settings(env_file: str | None = DEFAULT_ENV_FILE) -> Settings:

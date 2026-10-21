@@ -27,6 +27,10 @@ STATUS_BY_CODE: dict[str, int] = {
     "embedding_model_unavailable": 503,
     "vector_store_unavailable": 503,
     "reranker_unavailable": 503,
+    "llm_not_configured": 503,
+    "llm_timeout": 503,
+    "llm_rate_limited": 503,
+    "llm_unavailable": 502,
 }
 DOMAIN_DEFAULT_STATUS = 422
 INFRASTRUCTURE_DEFAULT_STATUS = 503

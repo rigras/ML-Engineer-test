@@ -8,6 +8,7 @@ from typing import Protocol
 
 from app.domain.chunking import Chunk
 from app.domain.document import Page, PageImage, PdfInfo
+from app.domain.grounding import LlmReply, Prompt
 from app.domain.persons import PersonSpan
 
 
@@ -81,4 +82,12 @@ class Reranker(Protocol):
 
     def score(self, question: str, texts: Sequence[str]) -> list[float]:
         """One score per text, in input order (higher = more relevant); ``[]`` for none."""
+        ...
+
+
+class AnswerGenerator(Protocol):
+    """Writes an answer from a prompt; never chooses what runs next (ADR-006)."""
+
+    def generate(self, prompt: Prompt) -> LlmReply:
+        """Raises ``LlmNotConfigured``, ``LlmTimeout``, ``LlmRateLimited`` or ``LlmUnavailable``."""
         ...

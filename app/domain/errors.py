@@ -101,3 +101,27 @@ class RerankerUnavailable(InfrastructureError):
     """The configured reranker model cannot be loaded."""
 
     code = "reranker_unavailable"
+
+
+class LlmNotConfigured(InfrastructureError):
+    """No API key is configured for the LLM, so answers cannot be generated."""
+
+    code = "llm_not_configured"
+
+
+class LlmTimeout(InfrastructureError):
+    """The LLM did not answer within the configured timeout (after retries)."""
+
+    code = "llm_timeout"
+
+
+class LlmRateLimited(InfrastructureError):
+    """The LLM provider kept rejecting calls for exceeding its rate limit."""
+
+    code = "llm_rate_limited"
+
+
+class LlmUnavailable(InfrastructureError):
+    """The LLM provider failed (server error, connection error, rejected key)."""
+
+    code = "llm_unavailable"
