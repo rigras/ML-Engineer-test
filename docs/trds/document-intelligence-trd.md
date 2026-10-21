@@ -245,7 +245,7 @@ independent) and no product learning loop beyond the offline golden set (§11).
 | Embeddings | **intfloat/multilingual-e5-small** | — | 384 d, ~470 MB, ES+EN, better retrieval than paraphrase-MiniLM; needs `query:`/`passage:` prefixes | CPU-only torch wheel via uv index | **Chosen** (ADR-009) |
 | Embeddings | BAAI/bge-m3 / Qwen3-Embedding-0.6B / EmbeddingGemma-300M | — | Higher quality | 1.5–2.2 GB or gated licence | Rejected — CPU latency/image size |
 | Embeddings runtime | sentence-transformers 6.2.0 (+ torch 2.14.1 CPU) vs fastembed 0.9.0 (ONNX) | — | ST is the PRD's suggestion; fastembed avoids torch | ST: GBs unless CPU index; fastembed: catalog unverified for e5-small | ST with CPU-only torch; fastembed is the S3 fallback |
-| LLM provider | **Groq** (free) | `https://api.groq.com/openai/v1` | OpenAI-compatible, very fast, no card. Production models (2026-10-21): `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b` | ~30 RPM / ~8 K TPM / ~1 K RPD on the developer plan (verify per model in console); data leaves the machine | **Chosen — default** (owner decision 2026-10-21), model `llama-3.3-70b-versatile`: production, non-reasoning (no hidden reasoning tokens against the TPM budget), strong instruction following for citation rules |
+| LLM provider | **Groq** (free) | `https://api.groq.com/openai/v1` | OpenAI-compatible, very fast, no card. Production models (2026-10-21): `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b` | ~30 RPM / ~8 K TPM / ~1 K RPD on the developer plan (verify per model in console); data leaves the machine | **Chosen — default** (owner decision 2026-10-21). Model was `llama-3.3-70b-versatile`; Groq retired it (404 `model_not_found`), so the default is now `openai/gpt-oss-120b`, the largest general chat model the key can use. It cites as `【n】`, which the citation parser also accepts |
 | LLM provider | **Ollama** (local) | `http://ollama:11434/v1` | OpenAI-compatible, private, compose-friendly, no limits | CPU: 3–4 B models ≈ tens of seconds/answer | Not shipped — reachable by config (`LLM_BASE_URL`) if needed |
 | LLM provider | OpenRouter `:free`, Gemini OpenAI endpoint, Cerebras | — | Compatible | 50 RPD cap / free-tier training on data / unclear terms | Rejected as default; usable via config |
 | LLM client | **openai SDK** | 3.x (verify pin) | `base_url`, `timeout`, `max_retries` with exponential backoff on 408/409/429/5xx built in | one dep | **Chosen** (ADR-010) |
@@ -489,7 +489,7 @@ golden-set entry before the fix.
   `max_retries` from config; default target Groq free tier; any other OpenAI-compatible endpoint by config.
   SDK errors translated at the adapter edge (`LlmUnavailable`, `LlmRateLimited`,
   `LlmTimeout`). Temperature 0 for grounded answers. *Provider confirmed 2026-10-21:
-  Groq, default model `llama-3.3-70b-versatile` (§8.2).*
+  Groq, default model `openai/gpt-oss-120b` (§8.2; replaced the retired `llama-3.3-70b-versatile`).*
 - **Consequences:** + built-in backoff respecting 429/5xx, works with every provider.
   − one more dependency; less control over jitter (acceptable; tenacity if needed).
 
@@ -542,7 +542,7 @@ architecture/practices).
 
 | Question | Owner | Blocking |
 |---|---|---|
-| ~~Which LLM provider to configure by default?~~ **Resolved 2026-10-21: Groq, `llama-3.3-70b-versatile`** (ADR-010, §8.2) | Pablo | — |
+| ~~Which LLM provider to configure by default?~~ **Resolved 2026-10-21: Groq, `openai/gpt-oss-120b`** (first `llama-3.3-70b-versatile`, retired by Groq) (ADR-010, §8.2) | Pablo | — |
 | Time budget for the submission (decides how much of P3 ships) | Pablo | No |
 | Do graders expect a top-left or bottom-left origin for boxes? (ADR-003 picks top-left and documents the flip) | Evaluator (unknown) | No |
 | Multi-language: ship Spanish NER enabled by default or opt-in via config? | Pablo | No |

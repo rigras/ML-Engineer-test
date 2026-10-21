@@ -7,7 +7,7 @@
     {"id": "q04", "kind": "answerable", "question": "Who seconded the motion to approve the previous minutes?", "expected_sources": ["meeting_minutes.pdf, page 0"], "fact": "Thomas Muller"},
     {"id": "q05", "kind": "answerable", "question": "When is the migration to AWS expected to be completed?", "expected_sources": ["meeting_minutes.pdf, page 1"], "fact": "Q3 2024"},
     {"id": "q06", "kind": "answerable", "question": "Which company is the proposed strategic partnership with?", "expected_sources": ["meeting_minutes.pdf, page 1"], "fact": "NovaTech"},
-    {"id": "q07", "kind": "answerable", "question": "How much was the NSF grant?", "expected_sources": ["research_report.pdf, page 1"], "fact": "450K"},
+    {"id": "q07", "kind": "answerable", "question": "How much was the NSF grant?", "expected_sources": ["research_report.pdf, page 1"], "fact": "450"},
     {"id": "q08", "kind": "answerable", "question": "Who did Priya Sharma co-author a paper with?", "expected_sources": ["research_report.pdf, page 0"], "fact": "Hans Weber"},
     {"id": "q09", "kind": "answerable", "question": "¿Quién dirige la división de Machine Learning?", "expected_sources": ["research_report.pdf, page 0", "research_report.pdf, page 1"], "fact": "Al-Rashidi"},
     {"id": "q10", "kind": "answerable", "question": "Who leads the Computational Biology Division?", "expected_sources": ["research_report.pdf, page 0"], "fact": "Benjamin Foster"},

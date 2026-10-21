@@ -28,6 +28,22 @@ def test_grouped_and_adjacent_citations_are_understood(reply: str) -> None:
     assert answer.text == "Chen and Muller."
 
 
+@pytest.mark.parametrize("reply", ["Chen and Muller【1】【2】.", "Chen and Muller 【1, 2】."])
+def test_lenticular_bracket_citations_are_understood(reply: str) -> None:
+    # gpt-oss models cite as 【n】 even when the prompt shows [n].
+    answer = ground_answer(reply, CHUNKS)
+
+    assert answer.sources == ("company_memo.pdf, page 0", "meeting_minutes.pdf, page 0")
+    assert answer.text == "Chen and Muller."
+
+
+def test_unicode_spaces_in_the_answer_become_plain_spaces() -> None:
+    # gpt-oss writes "Robert\u202fChen" (narrow no-break space); clients expect "Robert Chen".
+    answer = ground_answer("Robert\u202fChen and\u00a0Muller [1, 2].", CHUNKS)
+
+    assert answer.text == "Robert Chen and Muller."
+
+
 def test_the_same_page_cited_twice_is_one_source() -> None:
     answer = ground_answer("First [2]. Again [2].", CHUNKS)
 

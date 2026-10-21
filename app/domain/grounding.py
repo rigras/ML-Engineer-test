@@ -23,10 +23,13 @@ SYSTEM_RULES = f"""You answer questions using ONLY the numbered passages you are
 - If passages contradict each other, say so and cite each of them.
 - Answer in the language of the question, in one to three sentences."""
 
-_CITATION = re.compile(r"\[\s*(\d+(?:\s*,\s*\d+)*)\s*\]")
+# `[n]` as the prompt asks, or `【n】`, which gpt-oss models write regardless.
+_CITATION = re.compile(r"[\[【]\s*(\d+(?:\s*,\s*\d+)*)\s*[\]】]")
 _DELIMITER = re.compile(r"</?passage\b[^>]*>?", re.IGNORECASE)
 _SPACE_BEFORE_PUNCTUATION = re.compile(r"\s+([.,;:!?])")
 _SPACES = re.compile(r"[ \t]{2,}")
+# Any whitespace but a line break (e.g. the U+202F gpt-oss puts inside names).
+_UNICODE_SPACE = re.compile(r"[^\S\n]")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,6 +82,6 @@ def ground_answer(reply: str, chunks: Sequence[Chunk]) -> GroundedAnswer:
                 sources.append(chunks[number - 1].source)
     if not sources:
         return GroundedAnswer(NOT_FOUND_ANSWER, (), invalid)
-    text = _CITATION.sub("", reply)
+    text = _UNICODE_SPACE.sub(" ", _CITATION.sub("", reply))
     text = _SPACES.sub(" ", _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)).strip()
     return GroundedAnswer(text, tuple(sources), invalid)

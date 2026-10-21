@@ -80,7 +80,9 @@ def main() -> int:
     )
 
     passed_items, ungrounded = 0, 0
-    with tempfile.TemporaryDirectory() as folder:
+    # Windows can hold Chroma's sqlite file a moment after close(); a leftover temp
+    # folder must not turn a finished eval into a crash.
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as folder:
         store = ChromaVectorStore(folder, settings.vector_store_collection)
         try:
             ingest = IngestDocument(

@@ -54,7 +54,7 @@ class Settings(BaseSettings):
     # LLM: any OpenAI-compatible endpoint; Groq by default (ADR-010)
     llm_base_url: str = Field(default="https://api.groq.com/openai/v1", min_length=1)
     llm_api_key: SecretStr | None = None
-    llm_model: str = Field(default="llama-3.3-70b-versatile", min_length=1)
+    llm_model: str = Field(default="openai/gpt-oss-120b", min_length=1)
     llm_timeout_seconds: float = Field(default=30.0, gt=0.0)
     llm_max_retries: int = Field(default=2, ge=0)
 
