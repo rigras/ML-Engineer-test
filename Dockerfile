@@ -23,18 +23,20 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# Dependencies first (cached layer), then the code. The lock pins CPU-only torch.
-# uv's download cache is a build-time mount, so it never lands in the image.
+# Dependencies first (cached layer), then the models, then the code, so a code change
+# rebuilds only the last layers. The lock pins CPU-only torch; uv's download cache is a
+# build-time mount, so it never lands in the image.
 COPY pyproject.toml uv.lock .python-version ./
 RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev --no-install-project
-COPY app ./app
-RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 # Bake the embedder and reranker into the image (must match the configured defaults).
 ARG EMBEDDING_MODEL=intfloat/multilingual-e5-small
 ARG RERANKER_MODEL=cross-encoder/mmarco-mMiniLMv2-L12-H384-v1
 RUN python -c "from sentence_transformers import CrossEncoder, SentenceTransformer; \
 SentenceTransformer('${EMBEDDING_MODEL}'); CrossEncoder('${RERANKER_MODEL}')"
+
+COPY app ./app
+RUN --mount=type=cache,target=/root/.cache/uv uv sync --frozen --no-dev
 
 # Non-root user; it only writes to /data (the vector store volume) and /tmp.
 RUN useradd --uid 10001 --no-create-home app \
