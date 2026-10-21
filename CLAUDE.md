@@ -14,8 +14,8 @@ building). Hexagonal architecture (TRD ADR-001).
 - Modules/files `snake_case.py`; classes `PascalCase`; functions/variables
   `snake_case`; constants `UPPER_SNAKE` (CONSTITUTION §10).
 - Ports are role nouns as `Protocol`s (`OcrEngine`, `PersonNameRecognizer`,
-  `Embedder`, `VectorStore`, `AnswerGenerator`, `PdfRasterizer`); adapters are
-  `<Tech><Port>` (`TesseractOcrEngine`, `ChromaVectorStore`) (TRD §2).
+  `Embedder`, `VectorStore`, `Reranker`, `AnswerGenerator`, `PdfRasterizer`); adapters
+  are `<Tech><Port>` (`TesseractOcrEngine`, `ChromaVectorStore`) (TRD §2).
 - Use cases are verb phrases: `ExtractNames`, `IngestDocument`, `AnswerQuestion`
   (TRD §3).
 - Errors are named by the violated rule (`UploadIsNotPdf`, `LlmUnavailable`), never
@@ -111,6 +111,18 @@ honorifics excluded.
 - The repo lives under a OneDrive path with spaces — quote paths in shell commands.
 - NER default is `en_core_web_lg` (ADR-013): `sm` leaked `'Atlas'`/`Forbes` as PERSON on
   the OCR text. Re-run `scripts/eval_ner.py --model <name>` before changing it.
+- RAG models (e5 embedder, mmarco reranker) download to the Hugging Face cache on first
+  start (~0.6 GB); torch comes from the CPU-only wheel index (`[tool.uv.sources]` in
+  `pyproject.toml`) — never add a plain `torch` source. `app.main` imports torch, so any
+  test importing it pays ~15 s once.
+- Chroma on Windows keeps its files locked until `client.close()`
+  (`ChromaVectorStore.close()`, run by the lifespan via `Container.on_shutdown`); tests
+  that open a store must close it. Collection names need ≥ 3 characters.
+- openai 3.x is built on `httpx2` (not `httpx`): inject `httpx2.Client(transport=
+  httpx2.MockTransport(...))` to fake the LLM. Without `DOCINTEL_LLM_API_KEY` the app
+  starts, `/api/ask` answers 503 `llm_not_configured`, `scripts/eval_answers.py` skips.
+- Changing `DOCINTEL_RERANKER_MODEL` changes the score scale: re-run
+  `scripts/eval_retrieval.py` and update `DOCINTEL_RERANK_MIN_SCORE` (ADR-014).
 - Deliberate deviation from guati-factory `/create-rules`: no `.claude/context/`
   modules — they only duplicated the TRD/CONSTITUTION and aren't auto-loaded; this
   file points to the source sections instead.

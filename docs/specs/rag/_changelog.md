@@ -1,5 +1,26 @@
 # Changelog — rag
 
+## 2026-10-21 — Implementation
+- T-001…T-006 implemented, one commit each (see `_manifest.md`), full gate green per
+  ticket (final: 818 unit + 47 integration, 1 live-LLM test skipped without a key).
+- Evals: `time_reranker.py` mmarco p50 1.55 s / 20 pairs; `eval_retrieval.py` hit@5 10/10,
+  hit@1 10/10, gate calibrated at −2.59 (window −4.49 … −0.70); `eval_answers.py` not run
+  yet — needs `DOCINTEL_LLM_API_KEY`.
+- Divergences from the plan (acceptance criteria unchanged):
+  - T-003: `ChromaVectorStore.close()` uses `client.close()` — `clear_system_cache()` alone
+    does not release Windows file locks while references live (verified); the
+    collection name needs ≥ 3 chars (Chroma rule, now a `Settings` constraint); the
+    extraction e2e now uses a temporary vector store; the fast suite takes ~25 s instead
+    of ~7 s because `app.main` imports torch.
+  - T-004/T-005: the reranker and `RetrieveChunks` were wired into `build_container` by
+    T-006, their first consumer (no unused objects at startup).
+  - T-005: `eval_retrieval.py` also reports hit@1 — the samples make only 5 chunks, so
+    top-5 holds everything and hit@5 alone proves little.
+  - T-006: openai 3.x is built on `httpx2`, not `httpx` (test transport and import-linter
+    updated); `GroundedAnswer` counts invalid citations; `answer_completed` logs
+    `sources_count` + `invalid_citations`; an empty `DOCINTEL_LLM_API_KEY` counts as
+    missing.
+
 ## 2026-10-21 — Approval
 - Approved by the human gate (Pablo): T-004 v2 (after CR-001).
 
