@@ -1,101 +1,94 @@
 # DESIGN — Document Intelligence Service
 
-> **Visual version (3 pages): [DESIGN.pdf](DESIGN.pdf)** — same content, built from
-> [`docs/design/design.html`](docs/design/design.html).
+> **3-page PDF version: [DESIGN.pdf](DESIGN.pdf)** — same content.
 
-Scanned PDF → every person name with its **page and box in PDF points** → fuzzy match
-against a requested list; plus RAG answers grounded in ingested documents. FastAPI,
-Python 3.12, hexagonal architecture. Full record: the
-[TRD](docs/trds/document-intelligence-trd.md) and ADR-001…015.
+Give it a scanned PDF and it returns every person mentioned, with the page and the exact
+box where the name sits, so a reviewer can check it. It also compares those names with a
+list you send, and answers questions about uploaded documents, citing the page each
+answer comes from.
 
-| NER P / R | Boxes verified | Retrieval hit@1 | Answers pass^3 | Ungrounded sources |
-|---|---|---|---|---|
-| 1.00 / 0.98 | 54 / 54 | 11 / 12 | 15 / 15 | 0 |
-
-## 1. Components
-
-![Components: driving adapters, use cases, ports, adapters](docs/design/components.svg)
-
-Use cases depend only on **ports** (`Protocol`s); each library lives in one adapter;
-`app/main.py` builds the adapters once at startup and injects them. `import-linter` fails
-the build if domain or application import FastAPI, Pydantic or a vendor SDK.
-
-## 2. Extract flow
-
-![Extract pipeline: validate, rasterize, OCR, pixels to points, NER and align, match](docs/design/extract-flow.svg)
-
-Names are located by **character offsets**, not by searching the text: one box per real
-occurrence, repeated names handled, honorifics excluded. Matching is
-`max(ratio, token_sort_ratio) ≥ 0.90` on casefolded, accent-stripped names
-(`María González` ~ `Maria Gonzalez`, word order tolerated, no substring inflation).
-Pages are 0-based; origin top-left (a bottom-left consumer flips
-`y' = page_height − y − height`).
-
-## 3. Engineering practices
-
-| | |
-|---|---|
-| Configuration | One `Settings` object; every host, model, threshold, DPI and limit is a `DOCINTEL_*` variable (`.env.example`). |
-| Validation | By content at the edge: `%PDF-`, empty, size, page count, encrypted/corrupt, malformed `names` — each a specific 4xx code. |
-| Resilience | Domain errors → 4xx, infrastructure → 5xx with `request_id`; LLM timeout + retries; OCR per-page timeout. |
-| Observability | Structured JSON logs with event names and `request_id`; names and document text never logged. |
-| Tests | ~870: pure domain, use cases on fakes, real-engine adapters, end-to-end on the samples; plus 5 eval scripts. |
-
-## 4. Ask sequence
-
-![Ask sequence: hybrid retrieval, rerank, LLM, grounding](docs/design/ask-sequence.svg)
-
-**Ingest** packs OCR layout blocks into ≤ 250-token, page-bounded chunks (a unit that
-doesn't fit moves whole to the next chunk, so no word is cut) with IDs
-`sha256(pdf)[:16]:chunk` — unique across documents, idempotent on re-ingest. **Hybrid +
-rerank** because dense search misses exact names and figures and BM25 catches them; the
-reranker then puts the best five passages first. **Whether those passages answer the
-question is the LLM's call.** A cut-off on the reranker score was tried and dropped:
-questions with and without an answer get overlapping scores, so it rejected easy ones
-like "Who is the CEO?" (CR-002). The LLM still can't invent a source — code builds
-`sources` from the passages it cites.
-
-## 5. Technology choices and trade-offs
-
-| Need | Choice | Why | Trade-off / rejected |
+| Names found that are real people / real people found | Boxes verified | Questions answered correctly (3 runs each) | Made-up sources |
 |---|---|---|---|
-| OCR | Tesseract 5 | Word boxes + confidence, light, CPU | Weak on poor scans → docTR / cloud OCR behind `OcrEngine` |
-| PDF → image | PyMuPDF | Page size in points, rotation | AGPL → pypdfium2 for commercial use |
-| NER | spaCy `en_core_web_lg` | Only model with P/R ≥ 0.90 and zero ORG leaks; no torch | `sm` tagged "Atlas"/"Forbes" as people |
-| Matching | rapidfuzz | Full-string similarity | thefuzz is a wrapper over it |
-| Embeddings | multilingual-e5-small | Spanish + English, CPU | MiniLM English-only; bge-m3 too heavy |
-| Reranker | mmarco-mMiniLMv2-L12 | Multilingual, 1.5 s/question on CPU | bge-reranker-v2-m3: 21 s on CPU |
-| Vector store | Chroma, embedded | Zero infrastructure; volume in Docker | Single writer; Qdrant one adapter away |
-| LLM | Groq gpt-oss-120b | Any OpenAI-compatible endpoint by config | Free tier ≈ 30 req/min |
+| 100 % / 98 % | 54 of 54 | 15 of 15 | 0 |
 
-## 6. Scaling to 1000+ PDFs/hour
+## 1. How the pieces fit together
 
-![Scaling: async API, object storage, queue, autoscaled OCR workers, results and vector DB](docs/design/scaling.svg)
+![Users, API, the three flows and the engines they use](docs/design/components.svg)
 
-1000 PDFs/h = 0.28 PDF/s; at ~2–3 CPU-s per page, a 5-page average keeps ~4 cores busy
-(~8 with headroom). The upload returns `202` + job id, stateless OCR workers (this same
-image) autoscale on queue depth, OCR is cached by content hash, and the vector store
-becomes a service with native hybrid search.
+Each engine sits behind its own small interface: it can be swapped through
+configuration, or replaced by a fake in tests.
 
-## 7. Failure modes and mitigations
+## 2. Finding names and where they are
 
-| Failure | Mitigation | Response |
+![Six steps from upload to matched names](docs/design/extract-flow.svg)
+
+- **Boxes are in PDF points, not image pixels** (72 per inch, origin at the top-left), so
+  they line up with the PDF whatever resolution was used to read it.
+- **The box comes from the person's own words.** The name finder marks a person in the
+  page text; we take exactly the OCR words it covers and draw the box around them. A name
+  that appears five times gets five boxes, and titles like "Dr." stay outside.
+- **Matching compares whole names**, ignoring case, accents and punctuation:
+  *María González* matches *Maria Gonzalez*, but *Ana* does not match
+  *Ana María Rodríguez*.
+
+## 3. Answering a question
+
+![Question, search, re-ranking, LLM, answer with sources](docs/design/ask-sequence.svg)
+
+- **Indexing.** Each uploaded document is read the same way, then split into chunks of
+  whole paragraphs (never cutting a word, never crossing a page). Chunk ids start with a
+  fingerprint of the file, so a second document can't overwrite the first and uploading
+  the same file twice doesn't duplicate it.
+- **Two searches, then a ranking.** A search by meaning finds paraphrases; a search by
+  exact words finds names and figures the first one misses. A re-ranker then reads each
+  candidate next to the question and keeps the best five.
+- **The LLM decides if the answer is there.** It answers only from those five passages,
+  or says it isn't in the documents. We first tried a score cut-off to decide that, and
+  dropped it: it rejected easy questions like "Who is the CEO?".
+- **Sources can't be invented.** The LLM only cites passage numbers; the service turns
+  them into "file, page n" from the passages it actually sent.
+
+## 4. Technology choices and trade-offs
+
+| Need | Choice | Why | Trade-off |
+|---|---|---|---|
+| Read scanned text | Tesseract | Free, runs on CPU, gives each word's position | Struggles with poor scans; a cloud OCR could replace it |
+| PDF → images | PyMuPDF | Fast, knows page sizes in points | AGPL licence; pypdfium2 if that matters |
+| Find people | spaCy (large English model) | Measured best on our samples; the small model mistook a project and a magazine for people | ~400 MB more; weak on ALL-CAPS text |
+| Compare names | rapidfuzz | Whole-name similarity, fast | A fixed threshold (0.90): configurable |
+| Search by meaning | e5 (multilingual) + Chroma | Spanish and English, no extra servers | One process writes; a database service at scale |
+| Rank results | Multilingual cross-encoder | ~1.5 s per question on CPU | A stronger model took 21 s on CPU |
+| Write answers | Groq, gpt-oss-120b | Free and fast; any OpenAI-compatible provider by config | Rate limits on the free tier; text leaves the machine |
+
+## 5. Scaling to 1000+ PDFs an hour
+
+1000 PDFs an hour is one every 3.6 seconds. Reading a page takes 2–3 seconds of CPU, so
+with 5 pages per PDF that is about 4 busy cores (8 with headroom). The heavy work moves
+out of the request: the upload returns a job id right away, and workers that scale with
+the queue do the reading.
+
+![Upload, storage, queue, workers, results and vector database](docs/design/scaling.svg)
+
+## 6. What can go wrong and what happens
+
+| Failure | What we do | Caller sees |
 |---|---|---|
-| Not a PDF / empty / too big / encrypted | Checked by content before any OCR | 4xx, specific code |
-| Tesseract missing or stuck | Per-page timeout | 503 `ocr_unavailable` |
-| Noisy scan | Low-confidence words dropped | fewer names, no box over noise |
-| LLM slow / rate-limited / down | SDK timeout + backoff; extract/ingest unaffected | 503/502 `llm_*` |
-| LLM invents a source | Sources built from cited passages only | impossible by construction |
-| Question not covered | The LLM is told to say so; an answer without a citation counts as not found | "not found" |
-| Prompt injection | Passages delimited as data, no tools, plain-text UI | golden probe passes |
-| Duplicate ingest | Content-hash IDs | idempotent upsert |
-| ALL-CAPS documents | Known limit of the NER | documented |
+| Not a PDF, empty, too big, too many pages, password | Checked before any work starts | 4xx with a specific code |
+| OCR engine missing or stuck | Time limit per page | 503 |
+| Poor scan | Words the OCR is unsure of are dropped, so no box is drawn over noise | fewer names |
+| LLM slow, busy or down | Time limit and automatic retries; names and indexing keep working | 503 / 502 |
+| Answer not in the documents | The LLM says so; an answer that cites nothing counts as "not found" | "not found" |
+| A document tries to give the LLM orders | Document text is marked as data; the LLM has no tools | normal answer |
+| Same file uploaded twice | Same fingerprint, so it replaces itself | no duplicates |
+| Text in ALL CAPS | Known limit of the name finder | documented |
 
-## 8. Routing between models by query complexity
+## 7. Choosing a model by question difficulty
 
-`AnswerGenerator` is a port, so a router is one more adapter. A **deterministic** router
-scores the question after retrieval (how many passages score high, comparison /
-aggregation / "why" cues, length): simple lookups → small fast model (`gpt-oss-20b`), multi-passage or
-reasoning → large model (`gpt-oss-120b`); if the small model returns no valid citation
-while retrieval scored strong evidence, retry once on the large one. Thresholds are tuned on the
-golden Q&A set (pass^3 and cost), never decided by the LLM.
+Simple lookups ("Who is the CEO?") go to a small, cheap model; questions that compare, add
+up or ask "why" across several passages go to the large one. The choice is made by plain
+rules after the search (how many passages look relevant, words like "compare" or "why"),
+not by another LLM. If the small model gives an answer without citations while the search
+found good evidence, the question is retried once on the large model. The rules are tuned
+on our test questions, for accuracy and cost.
+
+Details: [DECISIONS.md](DECISIONS.md) (decisions, limitations, use of AI).

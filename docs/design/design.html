@@ -3,43 +3,35 @@
 <head>
 <meta charset="utf-8">
 <title>DESIGN — Document Intelligence Service</title>
-<!-- Source of DESIGN.pdf. Rebuild: see docs/design/README.md -->
+<!-- Source of DESIGN.pdf; the diagrams are the *.svg files next to it. Rebuild: see docs/design/README.md -->
 <style>
   @page { size: Letter; margin: 0.45in 0.5in; }
   :root { --ink: #17202e; --muted: #5b6577; --line: #d9dee7; --soft: #f3f5f9;
           --accent: #2c56c9; --accent-soft: #e8eefc; --ok: #1b7a43; --ok-soft: #e4f4ea;
           --warn: #b5530f; --warn-soft: #fcefe3; }
   * { box-sizing: border-box; }
-  body { margin: 0; color: var(--ink); font: 9.6pt/1.42 "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  body { margin: 0; color: var(--ink); font: 10pt/1.45 "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
   .page { page-break-after: always; }
   .page:last-child { page-break-after: auto; }
   h1 { font-size: 21pt; margin: 0; letter-spacing: -.01em; }
-  h2 { font-size: 12.5pt; margin: 14px 0 6px; padding-top: 7px; border-top: 2px solid var(--ink);
-       display: flex; justify-content: space-between; align-items: baseline; }
-  h2 small { font-weight: 400; font-size: 8.5pt; color: var(--muted); }
-  p { margin: 4px 0; }
-  .sub { color: var(--muted); margin: 3px 0 10px; font-size: 10pt; }
-  .kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; margin: 8px 0 4px; }
-  .kpi { background: var(--soft); border-radius: 6px; padding: 6px 8px; }
-  .kpi b { display: block; font-size: 14pt; line-height: 1.1; color: var(--accent); }
-  .kpi span { font-size: 7.8pt; color: var(--muted); }
-  svg { display: block; width: 100%; height: auto; }
-  svg text { font-family: "Segoe UI", Arial, sans-serif; }
-  .mono { font-family: Consolas, "Courier New", monospace; }
-  table { width: 100%; border-collapse: collapse; font-size: 8.7pt; }
-  th { text-align: left; font-size: 7.5pt; letter-spacing: .05em; text-transform: uppercase;
+  h2 { font-size: 13pt; margin: 16px 0 6px; padding-top: 7px; border-top: 2px solid var(--ink); }
+  p { margin: 5px 0; }
+  .sub { color: var(--muted); margin: 4px 0 10px; font-size: 10.5pt; }
+  .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 8px 0 4px; }
+  .kpi { background: var(--soft); border-radius: 6px; padding: 6px 9px; }
+  .kpi b { display: block; font-size: 15pt; line-height: 1.1; color: var(--accent); }
+  .kpi span { font-size: 8.3pt; color: var(--muted); }
+  img.fig { display: block; width: 100%; height: auto; margin: 4px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+  th { text-align: left; font-size: 7.8pt; letter-spacing: .05em; text-transform: uppercase;
        color: var(--muted); border-bottom: 1.5px solid var(--ink); padding: 3px 6px; }
   td { padding: 4px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
-  td:first-child { font-weight: 600; white-space: nowrap; }
-  .tag { display: inline-block; padding: 0 5px; border-radius: 3px; font-size: 7.8pt; font-weight: 600; }
-  .t-ok { background: var(--ok-soft); color: var(--ok); }
-  .t-warn { background: var(--warn-soft); color: var(--warn); }
-  .two { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-  .note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 6px 9px;
-          border-radius: 0 5px 5px 0; margin: 6px 0; }
-  ul { margin: 4px 0; padding-left: 16px; }
-  li { margin: 2px 0; }
-  .foot { color: var(--muted); font-size: 7.5pt; margin-top: 8px; }
+  td:first-child { font-weight: 600; }
+  .note { background: var(--accent-soft); border-left: 3px solid var(--accent); padding: 7px 10px;
+          border-radius: 0 5px 5px 0; margin: 8px 0; }
+  ul { margin: 4px 0; padding-left: 18px; }
+  li { margin: 3px 0; }
+  .foot { color: var(--muted); font-size: 8pt; margin-top: 10px; }
 </style>
 </head>
 <body>
@@ -47,286 +39,78 @@
 <!-- ================================ PAGE 1 ================================ -->
 <section class="page">
   <h1>Document Intelligence Service — Design</h1>
-  <p class="sub">Scanned PDF → every person name with its page and box in PDF points → fuzzy match against a requested list; plus RAG answers grounded in ingested documents. FastAPI · Python 3.12 · hexagonal architecture.</p>
+  <p class="sub">Give it a scanned PDF and it returns every person mentioned, with the page and the exact box where the name sits, so a reviewer can check it. It also compares those names with a list you send, and answers questions about uploaded documents, citing the page each answer comes from.</p>
 
   <div class="kpis">
-    <div class="kpi"><b>1.00 / 0.98</b><span>NER precision / recall on the OCR'd samples</span></div>
-    <div class="kpi"><b>54 / 54</b><span>boxes re-OCR'd from their crop = the name</span></div>
-    <div class="kpi"><b>11 / 12</b><span>retrieval hit@1 on golden questions</span></div>
-    <div class="kpi"><b>15 / 15</b><span>answers correct 3 runs in a row (pass^3)</span></div>
-    <div class="kpi"><b>0</b><span>sources not backed by a retrieved page</span></div>
+    <div class="kpi"><b>100 % / 98 %</b><span>of names found are real people / of real people are found</span></div>
+    <div class="kpi"><b>54 of 54</b><span>boxes checked by re-reading what is inside them</span></div>
+    <div class="kpi"><b>15 of 15</b><span>questions answered correctly, three runs in a row</span></div>
+    <div class="kpi"><b>0</b><span>made-up sources in any answer</span></div>
   </div>
 
-  <h2>1 · Components <small>use cases depend on ports; each library lives in one adapter</small></h2>
-  <svg viewBox="0 0 720 268" role="img" aria-label="Component diagram">
-    <defs>
-      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/></marker>
-    </defs>
-    <!-- column titles -->
-    <g font-size="9" font-weight="700" fill="#5b6577" letter-spacing="1">
-      <text x="10" y="12">DRIVING (api/)</text><text x="182" y="12">APPLICATION</text>
-      <text x="370" y="12">PORTS (Protocols)</text><text x="540" y="12">ADAPTERS (infrastructure/)</text>
-    </g>
-    <!-- driving -->
-    <g font-size="10">
-      <rect x="10" y="24" width="150" height="44" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="85" y="42" text-anchor="middle" font-weight="700">Audit viewer</text>
-      <text x="85" y="57" text-anchor="middle" fill="#5b6577" font-size="9">pdf.js · draws the boxes</text>
-      <rect x="10" y="86" width="150" height="74" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="85" y="104" text-anchor="middle" font-weight="700">FastAPI routers</text>
-      <text x="85" y="119" text-anchor="middle" fill="#5b6577" font-size="9">/extract /ingest /ask /health</text>
-      <text x="85" y="133" text-anchor="middle" fill="#5b6577" font-size="9">validate → call → map</text>
-      <text x="85" y="147" text-anchor="middle" fill="#5b6577" font-size="9">errors → status + request_id</text>
-      <rect x="10" y="178" width="150" height="46" rx="6" fill="#fff" stroke="#17202e" stroke-dasharray="4 3"/>
-      <text x="85" y="197" text-anchor="middle" font-weight="700">Composition root</text>
-      <text x="85" y="212" text-anchor="middle" fill="#5b6577" font-size="9">main.py lifespan builds adapters</text>
-    </g>
-    <line x1="85" y1="68" x2="85" y2="84" stroke="#5b6577" marker-end="url(#arr)"/>
-    <line x1="160" y1="122" x2="180" y2="122" stroke="#5b6577" marker-end="url(#arr)"/>
-    <!-- application -->
-    <g font-size="10">
-      <rect x="182" y="24" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="41" text-anchor="middle" font-weight="700">ExtractNames</text>
-      <text x="262" y="55" text-anchor="middle" fill="#5b6577" font-size="8.5">OCR → NER → align → match</text>
-      <rect x="182" y="72" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="89" text-anchor="middle" font-weight="700">IngestDocument</text>
-      <text x="262" y="103" text-anchor="middle" fill="#5b6577" font-size="8.5">OCR → chunk → embed → store</text>
-      <rect x="182" y="120" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="137" text-anchor="middle" font-weight="700">AnswerQuestion</text>
-      <text x="262" y="151" text-anchor="middle" fill="#5b6577" font-size="8.5">retrieve → rerank → LLM → sources</text>
-      <rect x="182" y="174" width="160" height="88" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
-      <text x="262" y="192" text-anchor="middle" font-weight="700" fill="#1b7a43">Domain — pure Python</text>
-      <text x="262" y="208" text-anchor="middle" font-size="8.5">px→pt geometry · offset alignment</text>
-      <text x="262" y="221" text-anchor="middle" font-size="8.5">name normalization · matching</text>
-      <text x="262" y="234" text-anchor="middle" font-size="8.5">chunking · BM25 · grounding</text>
-      <text x="262" y="250" text-anchor="middle" font-size="8" fill="#5b6577">no FastAPI / Pydantic / SDKs</text>
-    </g>
-    <line x1="262" y1="160" x2="262" y2="172" stroke="#5b6577" marker-end="url(#arr)"/>
-    <!-- ports + adapters -->
-    <g font-size="9.5">
-      <g id="rows">
-        <rect x="370" y="24" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="41" text-anchor="middle">PdfRasterizer</text>
-        <rect x="540" y="24" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="41" text-anchor="middle">PyMuPDF</text>
-        <rect x="370" y="57" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="74" text-anchor="middle">OcrEngine</text>
-        <rect x="540" y="57" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="74" text-anchor="middle">Tesseract 5 (300 DPI)</text>
-        <rect x="370" y="90" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="107" text-anchor="middle">PersonNameRecognizer</text>
-        <rect x="540" y="90" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="107" text-anchor="middle">spaCy en_core_web_lg</text>
-        <rect x="370" y="123" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="140" text-anchor="middle">Embedder</text>
-        <rect x="540" y="123" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="140" text-anchor="middle">multilingual-e5-small</text>
-        <rect x="370" y="156" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="173" text-anchor="middle">VectorStore</text>
-        <rect x="540" y="156" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="173" text-anchor="middle">Chroma, embedded (volume)</text>
-        <rect x="370" y="189" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="206" text-anchor="middle">Reranker</text>
-        <rect x="540" y="189" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="206" text-anchor="middle">mmarco cross-encoder</text>
-        <rect x="370" y="222" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="239" text-anchor="middle">AnswerGenerator</text>
-        <rect x="540" y="222" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="239" text-anchor="middle">Groq gpt-oss-120b (openai SDK)</text>
-      </g>
-      <g stroke="#5b6577" stroke-dasharray="3 3">
-        <line x1="510" y1="37" x2="538" y2="37"/><line x1="510" y1="70" x2="538" y2="70"/><line x1="510" y1="103" x2="538" y2="103"/>
-        <line x1="510" y1="136" x2="538" y2="136"/><line x1="510" y1="169" x2="538" y2="169"/><line x1="510" y1="202" x2="538" y2="202"/>
-        <line x1="510" y1="235" x2="538" y2="235"/>
-      </g>
-    </g>
-    <path d="M342,92 L356,92 L356,37 L368,37 M356,92 L356,235 L368,235 M356,70 L368,70 M356,103 L368,103 M356,136 L368,136 M356,169 L368,169 M356,202 L368,202" fill="none" stroke="#5b6577"/>
-    <text x="370" y="262" font-size="8.5" fill="#5b6577">Dependency rule enforced by import-linter: domain ← application ← api / infrastructure.</text>
-  </svg>
+  <h2>1 · How the pieces fit together</h2>
+  <img class="fig" src="components.svg" alt="Users, API, the three flows and the engines they use">
 
-  <h2>2 · Extract flow <small>POST /api/extract — what makes a box trustworthy</small></h2>
-  <svg viewBox="0 0 720 132" role="img" aria-label="Extract pipeline">
-    <defs><marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#2c56c9"/></marker></defs>
-    <g font-size="10">
-      <rect x="0" y="6" width="108" height="58" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="54" y="26" text-anchor="middle" font-weight="700">1 Validate</text>
-      <text x="54" y="41" text-anchor="middle" font-size="8.5" fill="#5b6577">%PDF- signature,</text>
-      <text x="54" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">size, pages, encrypted</text>
-      <rect x="122" y="6" width="108" height="58" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="176" y="26" text-anchor="middle" font-weight="700">2 Rasterize</text>
-      <text x="176" y="41" text-anchor="middle" font-size="8.5" fill="#5b6577">every page, page 0</text>
-      <text x="176" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">included, at 300 DPI</text>
-      <rect x="244" y="6" width="108" height="58" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="298" y="26" text-anchor="middle" font-weight="700">3 OCR</text>
-      <text x="298" y="41" text-anchor="middle" font-size="8.5" fill="#5b6577">words + pixel boxes;</text>
-      <text x="298" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">low confidence dropped</text>
-      <rect x="366" y="6" width="108" height="58" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="420" y="26" text-anchor="middle" font-weight="700">4 Pixels → points</text>
-      <text x="420" y="41" text-anchor="middle" font-size="8.5" class="mono">pt = px × 72 / DPI</text>
-      <text x="420" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">once, top-left origin</text>
-      <rect x="488" y="6" width="108" height="58" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="542" y="26" text-anchor="middle" font-weight="700">5 NER + align</text>
-      <text x="542" y="41" text-anchor="middle" font-size="8.5" fill="#5b6577">PERSON char span →</text>
-      <text x="542" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">exact OCR words → box</text>
-      <rect x="610" y="6" width="108" height="58" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="664" y="26" text-anchor="middle" font-weight="700">6 Match</text>
-      <text x="664" y="41" text-anchor="middle" font-size="8.5" fill="#5b6577">normalized full name,</text>
-      <text x="664" y="53" text-anchor="middle" font-size="8.5" fill="#5b6577">score ≥ 0.90</text>
-    </g>
-    <g stroke="#2c56c9" stroke-width="1.5">
-      <line x1="108" y1="35" x2="120" y2="35" marker-end="url(#a2)"/><line x1="230" y1="35" x2="242" y2="35" marker-end="url(#a2)"/>
-      <line x1="352" y1="35" x2="364" y2="35" marker-end="url(#a2)"/><line x1="474" y1="35" x2="486" y2="35" marker-end="url(#a2)"/>
-      <line x1="596" y1="35" x2="608" y2="35" marker-end="url(#a2)"/>
-    </g>
-    <!-- example -->
-    <rect x="0" y="78" width="718" height="50" rx="6" fill="#f3f5f9"/>
-    <g font-size="9">
-      <text x="12" y="96" font-weight="700">Real output (company_memo.pdf)</text>
-      <text x="12" y="113" class="mono" font-size="8.6">OCR words "Robert", "Chen" + their char offsets in the page text → spaCy PERSON span covers exactly those 2 words</text>
-      <text x="12" y="124" class="mono" font-size="8.6">→ union of their boxes → {page_number: 0, x: 59.76, y: 266.88, width: 53.04, height: 7.2} → matches "Robert Chen", score 1.0</text>
-    </g>
-  </svg>
-  <p>Locating names by <b>character offsets</b> instead of searching the text gives one box per real occurrence, handles repeated names and never guesses. Matching is <span class="mono">max(ratio, token_sort_ratio)</span> on casefolded, accent-stripped names, so <i>María González ~ Maria Gonzalez</i> and word order is tolerated, with no substring inflation.</p>
-  <p class="foot">The README's sample stack (thefuzz) is replaced by rapidfuzz, which thefuzz now wraps. Pages are 0-based; coordinates rounded to 0.01 pt; a bottom-left consumer flips y' = page_height − y − height.</p>
-  <h2>3 · Engineering practices <small>what the grader checks, where it lives</small></h2>
-  <table>
-    <tbody>
-      <tr><td>Configuration</td><td>One <span class="mono">Settings</span> object; every host, model, threshold, DPI and limit is a <span class="mono">DOCINTEL_*</span> variable (<span class="mono">.env.example</span>).</td></tr>
-      <tr><td>Validation</td><td>By content at the edge: <span class="mono">%PDF-</span>, empty, size, page count, encrypted/corrupt, malformed <span class="mono">names</span> — each a specific 4xx code.</td></tr>
-      <tr><td>Resilience</td><td>Domain errors → 4xx, infrastructure → 5xx with <span class="mono">request_id</span>; LLM timeout + retries; OCR per-page timeout.</td></tr>
-      <tr><td>Observability</td><td>Structured JSON logs with event names and <span class="mono">request_id</span>; names and document text never logged.</td></tr>
-      <tr><td>Tests</td><td>~870: pure domain, use cases on fakes, real-engine adapters, end-to-end on the samples; plus 5 eval scripts.</td></tr>
-    </tbody>
-  </table>
+  <h2>2 · Finding names and where they are</h2>
+  <img class="fig" src="extract-flow.svg" alt="Six steps from upload to matched names">
+  <ul>
+    <li><b>Boxes are in PDF points, not image pixels</b> (72 per inch, origin at the top-left), so they line up with the PDF whatever resolution was used to read it.</li>
+    <li><b>The box comes from the person's own words.</b> The name finder marks a person in the page text; we take exactly the OCR words it covers and draw the box around them. A name that appears five times gets five boxes, and titles like "Dr." stay outside.</li>
+    <li><b>Matching compares whole names</b>, ignoring case, accents and punctuation: <i>María González</i> matches <i>Maria Gonzalez</i>, but <i>Ana</i> does not match <i>Ana María Rodríguez</i>.</li>
+  </ul>
 </section>
 
 <!-- ================================ PAGE 2 ================================ -->
 <section class="page">
-  <h2>4 · Ask sequence <small>POST /api/ask — the LLM writes text; code decides everything else</small></h2>
-  <svg viewBox="0 0 720 214" role="img" aria-label="Ask sequence">
-    <defs><marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#17202e"/></marker></defs>
-    <!-- lifelines -->
-    <g font-size="9.5" font-weight="700" text-anchor="middle">
-      <rect x="10" y="4" width="84" height="24" rx="5" fill="#e8eefc" stroke="#2c56c9"/><text x="52" y="20">Client</text>
-      <rect x="128" y="4" width="110" height="24" rx="5" fill="#fff" stroke="#17202e"/><text x="183" y="20">AnswerQuestion</text>
-      <rect x="276" y="4" width="110" height="24" rx="5" fill="#fff" stroke="#17202e"/><text x="331" y="20">Chroma + BM25</text>
-      <rect x="424" y="4" width="110" height="24" rx="5" fill="#fff" stroke="#17202e"/><text x="479" y="20">Cross-encoder</text>
-      <rect x="572" y="4" width="138" height="24" rx="5" fill="#fff" stroke="#17202e"/><text x="641" y="20">LLM (Groq)</text>
-    </g>
-    <g stroke="#c4cad6" stroke-dasharray="3 3">
-      <line x1="52" y1="28" x2="52" y2="210"/><line x1="183" y1="28" x2="183" y2="210"/>
-      <line x1="331" y1="28" x2="331" y2="210"/><line x1="479" y1="28" x2="479" y2="210"/><line x1="641" y1="28" x2="641" y2="210"/>
-    </g>
-    <g font-size="8.8" stroke="#17202e">
-      <line x1="52" y1="46" x2="181" y2="46" marker-end="url(#a3)"/>
-      <line x1="183" y1="68" x2="329" y2="68" marker-end="url(#a3)"/>
-      <line x1="329" y1="88" x2="185" y2="88" marker-end="url(#a3)" stroke-dasharray="4 2"/>
-      <line x1="183" y1="108" x2="477" y2="108" marker-end="url(#a3)"/>
-      <line x1="477" y1="126" x2="185" y2="126" marker-end="url(#a3)" stroke-dasharray="4 2"/>
-      <line x1="183" y1="172" x2="639" y2="172" marker-end="url(#a3)"/>
-      <line x1="639" y1="190" x2="185" y2="190" marker-end="url(#a3)" stroke-dasharray="4 2"/>
-    </g>
-    <g font-size="8.8" fill="#17202e">
-      <text x="58" y="42">{question}</text>
-      <text x="190" y="64">dense top-10 (e5) ∪ BM25 top-10 (exact terms)</text>
-      <text x="190" y="84">≤ 20 candidate chunks</text>
-      <text x="190" y="104">score (question, chunk) pairs</text>
-      <text x="190" y="122">keep top 5, best first</text>
-    </g>
-    <rect x="190" y="134" width="330" height="26" rx="5" fill="#fcefe3" stroke="#b5530f"/>
-    <text x="198" y="151" font-size="8.8"><tspan font-weight="700" fill="#b5530f">LLM decides:</tspan> passages don't answer → "not in the documents"</text>
-    <g font-size="8.8" fill="#17202e">
-      <text x="190" y="168">numbered passages wrapped as data + question</text>
-      <text x="190" y="186">answer citing [n] / 【n】</text>
-    </g>
-    <rect x="58" y="196" width="460" height="16" rx="4" fill="#e4f4ea"/>
-    <text x="64" y="208" font-size="8.8"><tspan font-weight="700" fill="#1b7a43">Grounding (code):</tspan> sources = "file, page n" of the cited passages; uncited → not found</text>
-  </svg>
+  <h2>3 · Answering a question</h2>
+  <img class="fig" src="ask-sequence.svg" alt="Question, search, re-ranking, LLM, answer with sources">
+  <ul>
+    <li><b>Indexing.</b> Each uploaded document is read the same way, then split into chunks of whole paragraphs (never cutting a word, never crossing a page). Chunk ids start with a fingerprint of the file, so a second document can't overwrite the first and uploading the same file twice doesn't duplicate it.</li>
+    <li><b>Two searches, then a ranking.</b> A search by meaning finds paraphrases; a search by exact words finds names and figures the first one misses. A re-ranker then reads each candidate next to the question and keeps the best five.</li>
+    <li><b>The LLM decides if the answer is there.</b> It answers only from those five passages, or says it isn't in the documents. We first tried a score cut-off to decide that, and dropped it: it rejected easy questions like "Who is the CEO?".</li>
+    <li><b>Sources can't be invented.</b> The LLM only cites passage numbers; the service turns them into "file, page n" from the passages it actually sent.</li>
+  </ul>
 
-  <div class="two">
-    <div>
-      <p><b>Ingest.</b> Same OCR → OCR layout blocks packed into ≤ 250-token, page-bounded chunks; a unit that does not fit moves <i>whole</i> to the next chunk, so no word is ever cut and nothing passes e5's 512-token window. IDs are <span class="mono">sha256(pdf)[:16]:chunk</span>: a second document can't overwrite the first and re-ingesting is an idempotent upsert.</p>
-    </div>
-    <div>
-      <p><b>Why hybrid + rerank.</b> Dense search misses exact names and figures; BM25 catches them. The reranker then puts the best five passages first. Whether they answer the question is the LLM's call: a cut-off on the reranker score was tried and dropped, because questions with and without an answer get overlapping scores.</p>
-    </div>
-  </div>
-
-  <h2>5 · Technology choices and trade-offs</h2>
+  <h2>4 · Technology choices and trade-offs</h2>
   <table>
-    <thead><tr><th>Need</th><th>Choice</th><th>Why</th><th>Trade-off / rejected</th></tr></thead>
+    <thead><tr><th>Need</th><th>Choice</th><th>Why</th><th>Trade-off</th></tr></thead>
     <tbody>
-      <tr><td>OCR</td><td>Tesseract 5</td><td>Word boxes + confidence, light, CPU, eng+spa</td><td>Weak on poor scans → docTR / cloud OCR behind <span class="mono">OcrEngine</span></td></tr>
-      <tr><td>PDF → image</td><td>PyMuPDF</td><td>Page size in points, rotation, CropBox</td><td>AGPL → pypdfium2 for commercial use</td></tr>
-      <tr><td>NER</td><td>spaCy <span class="mono">en_core_web_lg</span></td><td>Only model with P/R ≥ 0.90 and zero ORG leaks; no torch</td><td><span class="mono">sm</span> tagged "Atlas"/"Forbes" as people; <span class="mono">trf</span> needs torch</td></tr>
-      <tr><td>Matching</td><td>rapidfuzz</td><td>Full-string similarity, C++, MIT</td><td>thefuzz is a wrapper; partial_ratio inflates substrings</td></tr>
-      <tr><td>Embeddings</td><td>multilingual-e5-small</td><td>Spanish + English, 384-d, CPU</td><td>MiniLM is English-only; bge-m3 too heavy for CPU</td></tr>
-      <tr><td>Reranker</td><td>mmarco-mMiniLMv2-L12</td><td>Multilingual, 1.5 s / question on CPU</td><td>bge-reranker-v2-m3: 21 s on CPU (fine on a GPU)</td></tr>
-      <tr><td>Vector store</td><td>Chroma, embedded</td><td>Zero infrastructure (allowed by the brief); volume in Docker</td><td>Single writer; Qdrant/pgvector = one adapter away</td></tr>
-      <tr><td>LLM</td><td>Groq gpt-oss-120b</td><td>Any OpenAI-compatible endpoint by config; SDK timeouts + backoff</td><td>Free tier ≈ 30 req/min; data leaves the machine</td></tr>
-      <tr><td>Chunking, BM25</td><td>~30 lines each, in the domain</td><td>Pure and property-tested</td><td>LangChain / rank-bm25 add deps and hide graded logic</td></tr>
+      <tr><td>Read scanned text</td><td>Tesseract</td><td>Free, runs on CPU, gives each word's position</td><td>Struggles with poor scans; a cloud OCR could replace it</td></tr>
+      <tr><td>PDF → images</td><td>PyMuPDF</td><td>Fast, knows page sizes in points</td><td>AGPL licence; pypdfium2 if that matters</td></tr>
+      <tr><td>Find people</td><td>spaCy (large English model)</td><td>Measured best on our samples; the small model mistook a project and a magazine for people</td><td>~400 MB more; weak on ALL-CAPS text</td></tr>
+      <tr><td>Compare names</td><td>rapidfuzz</td><td>Whole-name similarity, fast</td><td>A fixed threshold (0.90): configurable</td></tr>
+      <tr><td>Search by meaning</td><td>e5 (multilingual) + Chroma</td><td>Spanish and English, no extra servers</td><td>One process writes; a database service at scale</td></tr>
+      <tr><td>Rank results</td><td>Multilingual cross-encoder</td><td>~1.5 s per question on CPU</td><td>A stronger model took 21 s on CPU</td></tr>
+      <tr><td>Write answers</td><td>Groq, gpt-oss-120b</td><td>Free and fast; any OpenAI-compatible provider by config</td><td>Rate limits on the free tier; text leaves the machine</td></tr>
     </tbody>
   </table>
-
 </section>
 
 <!-- ================================ PAGE 3 ================================ -->
 <section class="page">
-  <h2>6 · Scaling to 1000+ PDFs/hour</h2>
-  <p>1000 PDFs/h = 0.28 PDF/s. OCR dominates at ~2–3 CPU-s per page: a 5-page average keeps <b>~4 cores busy</b>, ~8 with headroom. The CPU work leaves the request path; the same image becomes the worker.</p>
-  <svg viewBox="0 0 720 150" role="img" aria-label="Scaling architecture">
-    <defs><marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#17202e"/></marker></defs>
-    <g font-size="9.5" text-anchor="middle">
-      <rect x="0" y="40" width="88" height="50" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="44" y="61" font-weight="700">Client</text><text x="44" y="76" font-size="8.5" fill="#5b6577">upload / poll</text>
-      <rect x="112" y="40" width="110" height="50" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="167" y="61" font-weight="700">API</text><text x="167" y="76" font-size="8.5" fill="#5b6577">202 + job id</text>
-      <rect x="246" y="8" width="118" height="44" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="305" y="27" font-weight="700">Object storage</text><text x="305" y="41" font-size="8.5" fill="#5b6577">PDF by content hash</text>
-      <rect x="246" y="78" width="118" height="44" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="305" y="97" font-weight="700">Queue</text><text x="305" y="111" font-size="8.5" fill="#5b6577">one job per PDF</text>
-      <rect x="400" y="62" width="136" height="74" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
-      <rect x="394" y="56" width="136" height="74" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
-      <rect x="388" y="50" width="136" height="74" rx="6" fill="#fff" stroke="#1b7a43"/>
-      <text x="456" y="72" font-weight="700" fill="#1b7a43">OCR workers × N</text>
-      <text x="456" y="87" font-size="8.5" fill="#5b6577">autoscale on queue depth</text>
-      <text x="456" y="100" font-size="8.5" fill="#5b6577">pages in parallel</text>
-      <text x="456" y="113" font-size="8.5" fill="#5b6577">OCR cache by hash</text>
-      <rect x="566" y="8" width="152" height="50" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="642" y="28" font-weight="700">Results DB</text><text x="642" y="43" font-size="8.5" fill="#5b6577">names + boxes per job</text>
-      <rect x="566" y="74" width="152" height="50" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="642" y="94" font-weight="700">Vector DB service</text><text x="642" y="109" font-size="8.5" fill="#5b6577">native hybrid (Qdrant)</text>
-    </g>
-    <g stroke="#17202e">
-      <line x1="88" y1="65" x2="110" y2="65" marker-end="url(#a4)"/>
-      <line x1="222" y1="55" x2="244" y2="32" marker-end="url(#a4)"/>
-      <line x1="222" y1="75" x2="244" y2="98" marker-end="url(#a4)"/>
-      <line x1="364" y1="100" x2="386" y2="92" marker-end="url(#a4)"/>
-      <line x1="364" y1="30" x2="386" y2="62" marker-end="url(#a4)" stroke-dasharray="3 2"/>
-      <line x1="524" y1="70" x2="564" y2="38" marker-end="url(#a4)"/>
-      <line x1="524" y1="100" x2="564" y2="99" marker-end="url(#a4)"/>
-    </g>
-    <text x="0" y="146" font-size="8.5" fill="#5b6577">Also: GPU or hosted reranker/embedder · paid LLM tier with concurrency sized to its rate limit · OpenTelemetry traces per stage · lower DPI (200) as a speed/accuracy knob.</text>
-  </svg>
+  <h2>5 · Scaling to 1000+ PDFs an hour</h2>
+  <p>1000 PDFs an hour is one every 3.6 seconds. Reading a page takes 2–3 seconds of CPU, so with 5 pages per PDF that is about 4 busy cores (8 with headroom). The heavy work moves out of the request: the upload returns a job id right away, and workers that scale with the queue do the reading.</p>
+  <img class="fig" src="scaling.svg" alt="Upload, storage, queue, workers, results and vector database">
 
-  <h2>7 · Failure modes and mitigations</h2>
+  <h2>6 · What can go wrong and what happens</h2>
   <table>
-    <thead><tr><th>Failure</th><th>Mitigation</th><th>Response</th></tr></thead>
+    <thead><tr><th>Failure</th><th>What we do</th><th>Caller sees</th></tr></thead>
     <tbody>
-      <tr><td>Not a PDF / empty / too big / too many pages / encrypted</td><td>Checked by content before any OCR</td><td><span class="tag t-warn">4xx</span> specific <span class="mono">error.code</span></td></tr>
-      <tr><td>Tesseract missing or stuck</td><td>Per-page timeout; error translated in the adapter</td><td><span class="tag t-warn">503</span> <span class="mono">ocr_unavailable</span></td></tr>
-      <tr><td>Poor scan, noisy words</td><td>Words below the confidence floor are dropped — no box over noise</td><td><span class="tag t-ok">200</span> fewer names</td></tr>
-      <tr><td>LLM slow, rate-limited, down</td><td>SDK timeout + exponential backoff (honours Retry-After); extract/ingest unaffected</td><td><span class="tag t-warn">503/502</span> <span class="mono">llm_*</span></td></tr>
-      <tr><td>LLM invents a source</td><td>Impossible: sources come from cited passages that were sent; uncited → not found</td><td><span class="tag t-ok">200</span> grounded</td></tr>
-      <tr><td>Question not covered</td><td>The LLM is told to say so; an answer without a citation counts as not found</td><td><span class="tag t-ok">200</span> "not found"</td></tr>
-      <tr><td>Prompt injection in a document</td><td>Passages delimited as data; LLM has no tools; viewer renders plain text</td><td><span class="tag t-ok">200</span> (golden probe passes)</td></tr>
-      <tr><td>Duplicate ingest / retry</td><td>Content-hash IDs → idempotent upsert</td><td><span class="tag t-ok">200</span> no duplicates</td></tr>
-      <tr><td>ALL-CAPS documents (e.g. land registries)</td><td>Known limit: NER relies on capitalization → case-normalize before NER, or a stronger NER</td><td>documented</td></tr>
+      <tr><td>Not a PDF, empty, too big, too many pages, password</td><td>Checked before any work starts</td><td>4xx with a specific code</td></tr>
+      <tr><td>OCR engine missing or stuck</td><td>Time limit per page</td><td>503</td></tr>
+      <tr><td>Poor scan</td><td>Words the OCR is unsure of are dropped, so no box is drawn over noise</td><td>fewer names</td></tr>
+      <tr><td>LLM slow, busy or down</td><td>Time limit and automatic retries; names and indexing keep working</td><td>503 / 502</td></tr>
+      <tr><td>Answer not in the documents</td><td>The LLM says so; an answer that cites nothing counts as "not found"</td><td>"not found"</td></tr>
+      <tr><td>A document tries to give the LLM orders</td><td>Document text is marked as data; the LLM has no tools</td><td>normal answer</td></tr>
+      <tr><td>Same file uploaded twice</td><td>Same fingerprint, so it replaces itself</td><td>no duplicates</td></tr>
+      <tr><td>Text in ALL CAPS</td><td>Known limit of the name finder</td><td>documented</td></tr>
     </tbody>
   </table>
 
-  <h2>8 · Routing between models by query complexity</h2>
-  <div class="two">
-    <div>
-      <p><span class="mono">AnswerGenerator</span> is a port, so a router is one more adapter — no use case changes. A <b>deterministic</b> router scores the question <i>after</i> retrieval:</p>
-      <ul>
-        <li>how many passages score high (1 → lookup, several → synthesis);</li>
-        <li>cues for comparison, aggregation or "why";</li>
-        <li>question length and language.</li>
-      </ul>
-    </div>
-    <div>
-      <div class="note"><p><b>Simple lookup</b> → small fast model (gpt-oss-20b).<br><b>Multi-passage / reasoning</b> → large model (gpt-oss-120b).<br><b>Escalation:</b> if the small model returns no valid citation while retrieval scored strong evidence, retry once on the large model.</p></div>
-      <p>Thresholds are tuned on the golden Q&amp;A set (pass^3 and cost per answer), never decided by the LLM itself.</p>
-    </div>
-  </div>
-  <p class="foot">Full record: TRD (docs/trds) with ADR-001…015 · decisions and AI-use disclosure: DECISIONS.md · run: <span class="mono">docker compose up --build</span> → http://localhost:8000/viewer</p>
+  <h2>7 · Choosing a model by question difficulty</h2>
+  <p>Simple lookups ("Who is the CEO?") go to a small, cheap model; questions that compare, add up or ask "why" across several passages go to the large one. The choice is made by plain rules after the search (how many passages look relevant, words like "compare" or "why"), not by another LLM. If the small model gives an answer without citations while the search found good evidence, the question is retried once on the large model. The rules are tuned on our test questions, for accuracy and cost.</p>
+
+  <p class="foot">Details: DECISIONS.md (decisions, limitations, use of AI) · run with <b>docker compose up --build</b>, then open http://localhost:8000/viewer</p>
 </section>
 </body>
 </html>

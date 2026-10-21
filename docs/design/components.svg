@@ -1,71 +1,54 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 268" role="img" aria-label="Component diagram"><style>text{font-family:"Segoe UI",Arial,sans-serif}.mono{font-family:Consolas,"Courier New",monospace}</style><rect width="100%" height="100%" fill="#ffffff"/>
-    <defs>
-      <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/></marker>
-    </defs>
-    <!-- column titles -->
-    <g font-size="9" font-weight="700" fill="#5b6577" letter-spacing="1">
-      <text x="10" y="12">DRIVING (api/)</text><text x="182" y="12">APPLICATION</text>
-      <text x="370" y="12">PORTS (Protocols)</text><text x="540" y="12">ADAPTERS (infrastructure/)</text>
-    </g>
-    <!-- driving -->
-    <g font-size="10">
-      <rect x="10" y="24" width="150" height="44" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="85" y="42" text-anchor="middle" font-weight="700">Audit viewer</text>
-      <text x="85" y="57" text-anchor="middle" fill="#5b6577" font-size="9">pdf.js · draws the boxes</text>
-      <rect x="10" y="86" width="150" height="74" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
-      <text x="85" y="104" text-anchor="middle" font-weight="700">FastAPI routers</text>
-      <text x="85" y="119" text-anchor="middle" fill="#5b6577" font-size="9">/extract /ingest /ask /health</text>
-      <text x="85" y="133" text-anchor="middle" fill="#5b6577" font-size="9">validate → call → map</text>
-      <text x="85" y="147" text-anchor="middle" fill="#5b6577" font-size="9">errors → status + request_id</text>
-      <rect x="10" y="178" width="150" height="46" rx="6" fill="#fff" stroke="#17202e" stroke-dasharray="4 3"/>
-      <text x="85" y="197" text-anchor="middle" font-weight="700">Composition root</text>
-      <text x="85" y="212" text-anchor="middle" fill="#5b6577" font-size="9">main.py lifespan builds adapters</text>
-    </g>
-    <line x1="85" y1="68" x2="85" y2="84" stroke="#5b6577" marker-end="url(#arr)"/>
-    <line x1="160" y1="122" x2="180" y2="122" stroke="#5b6577" marker-end="url(#arr)"/>
-    <!-- application -->
-    <g font-size="10">
-      <rect x="182" y="24" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="41" text-anchor="middle" font-weight="700">ExtractNames</text>
-      <text x="262" y="55" text-anchor="middle" fill="#5b6577" font-size="8.5">OCR → NER → align → match</text>
-      <rect x="182" y="72" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="89" text-anchor="middle" font-weight="700">IngestDocument</text>
-      <text x="262" y="103" text-anchor="middle" fill="#5b6577" font-size="8.5">OCR → chunk → embed → store</text>
-      <rect x="182" y="120" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
-      <text x="262" y="137" text-anchor="middle" font-weight="700">AnswerQuestion</text>
-      <text x="262" y="151" text-anchor="middle" fill="#5b6577" font-size="8.5">retrieve → gate → LLM → sources</text>
-      <rect x="182" y="174" width="160" height="88" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
-      <text x="262" y="192" text-anchor="middle" font-weight="700" fill="#1b7a43">Domain — pure Python</text>
-      <text x="262" y="208" text-anchor="middle" font-size="8.5">px→pt geometry · offset alignment</text>
-      <text x="262" y="221" text-anchor="middle" font-size="8.5">name normalization · matching</text>
-      <text x="262" y="234" text-anchor="middle" font-size="8.5">chunking · BM25 · grounding</text>
-      <text x="262" y="250" text-anchor="middle" font-size="8" fill="#5b6577">no FastAPI / Pydantic / SDKs</text>
-    </g>
-    <line x1="262" y1="160" x2="262" y2="172" stroke="#5b6577" marker-end="url(#arr)"/>
-    <!-- ports + adapters -->
-    <g font-size="9.5">
-      <g id="rows">
-        <rect x="370" y="24" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="41" text-anchor="middle">PdfRasterizer</text>
-        <rect x="540" y="24" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="41" text-anchor="middle">PyMuPDF</text>
-        <rect x="370" y="57" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="74" text-anchor="middle">OcrEngine</text>
-        <rect x="540" y="57" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="74" text-anchor="middle">Tesseract 5 (300 DPI)</text>
-        <rect x="370" y="90" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="107" text-anchor="middle">PersonNameRecognizer</text>
-        <rect x="540" y="90" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="107" text-anchor="middle">spaCy en_core_web_lg</text>
-        <rect x="370" y="123" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="140" text-anchor="middle">Embedder</text>
-        <rect x="540" y="123" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="140" text-anchor="middle">multilingual-e5-small</text>
-        <rect x="370" y="156" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="173" text-anchor="middle">VectorStore</text>
-        <rect x="540" y="156" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="173" text-anchor="middle">Chroma, embedded (volume)</text>
-        <rect x="370" y="189" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="206" text-anchor="middle">Reranker</text>
-        <rect x="540" y="189" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="206" text-anchor="middle">mmarco cross-encoder</text>
-        <rect x="370" y="222" width="140" height="26" rx="13" fill="#fff" stroke="#2c56c9"/><text x="440" y="239" text-anchor="middle">AnswerGenerator</text>
-        <rect x="540" y="222" width="175" height="26" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="627" y="239" text-anchor="middle">Groq gpt-oss-120b (openai SDK)</text>
-      </g>
-      <g stroke="#5b6577" stroke-dasharray="3 3">
-        <line x1="510" y1="37" x2="538" y2="37"/><line x1="510" y1="70" x2="538" y2="70"/><line x1="510" y1="103" x2="538" y2="103"/>
-        <line x1="510" y1="136" x2="538" y2="136"/><line x1="510" y1="169" x2="538" y2="169"/><line x1="510" y1="202" x2="538" y2="202"/>
-        <line x1="510" y1="235" x2="538" y2="235"/>
-      </g>
-    </g>
-    <path d="M342,92 L356,92 L356,37 L368,37 M356,92 L356,235 L368,235 M356,70 L368,70 M356,103 L368,103 M356,136 L368,136 M356,169 L368,169 M356,202 L368,202" fill="none" stroke="#5b6577"/>
-    <text x="370" y="262" font-size="8.5" fill="#5b6577">Dependency rule enforced by import-linter: domain ← application ← api / infrastructure.</text>
-  </svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 720 226" role="img" aria-label="How the pieces fit together"><style>text{font-family:"Segoe UI",Arial,sans-serif}</style><rect width="100%" height="100%" fill="#ffffff"/>
+  <defs><marker id="c1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#5b6577"/></marker></defs>
+  <g font-size="9" font-weight="700" fill="#5b6577" letter-spacing="1">
+    <text x="10" y="12">WHO USES IT</text><text x="170" y="12">ENTRY POINT</text>
+    <text x="336" y="12">WHAT IT DOES</text><text x="530" y="12">ENGINES IT USES</text>
+  </g>
+  <g font-size="10" text-anchor="middle">
+    <rect x="10" y="30" width="130" height="62" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
+    <text x="75" y="54" font-weight="700">Compliance reviewer</text>
+    <text x="75" y="70" font-size="9" fill="#5b6577">audit viewer in the</text>
+    <text x="75" y="82" font-size="9" fill="#5b6577">browser: PDF + boxes</text>
+    <rect x="10" y="130" width="130" height="62" rx="6" fill="#e8eefc" stroke="#2c56c9"/>
+    <text x="75" y="156" font-weight="700">Other systems</text>
+    <text x="75" y="172" font-size="9" fill="#5b6577">call the HTTP API</text>
+
+    <rect x="170" y="30" width="136" height="162" rx="6" fill="#fff" stroke="#17202e"/>
+    <text x="238" y="54" font-weight="700">API (FastAPI)</text>
+    <text x="238" y="76" font-size="9">/api/extract</text>
+    <text x="238" y="90" font-size="9">/api/ingest</text>
+    <text x="238" y="104" font-size="9">/api/ask</text>
+    <text x="238" y="118" font-size="9">/health</text>
+    <text x="238" y="146" font-size="9" fill="#5b6577">checks every upload</text>
+    <text x="238" y="158" font-size="9" fill="#5b6577">before doing any work</text>
+    <text x="238" y="176" font-size="9" fill="#5b6577">clear errors + request id</text>
+
+    <rect x="336" y="30" width="164" height="48" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
+    <text x="418" y="50" font-weight="700">Extract names</text>
+    <text x="418" y="66" font-size="9" fill="#5b6577">read → find people → box → match</text>
+    <rect x="336" y="88" width="164" height="48" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
+    <text x="418" y="108" font-weight="700">Index a document</text>
+    <text x="418" y="124" font-size="9" fill="#5b6577">read → split into chunks → store</text>
+    <rect x="336" y="146" width="164" height="48" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
+    <text x="418" y="166" font-weight="700">Answer a question</text>
+    <text x="418" y="182" font-size="9" fill="#5b6577">search → rank → LLM → sources</text>
+  </g>
+  <g font-size="9.5">
+    <rect x="530" y="22" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="37"><tspan font-weight="700">PDF → images</tspan> · PyMuPDF</text>
+    <rect x="530" y="49" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="64"><tspan font-weight="700">Read text (OCR)</tspan> · Tesseract</text>
+    <rect x="530" y="76" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="91"><tspan font-weight="700">Find people</tspan> · spaCy</text>
+    <rect x="530" y="103" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="118"><tspan font-weight="700">Meaning vectors</tspan> · e5</text>
+    <rect x="530" y="130" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="145"><tspan font-weight="700">Vector store</tspan> · Chroma</text>
+    <rect x="530" y="157" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="172"><tspan font-weight="700">Re-ranking</tspan> · cross-encoder</text>
+    <rect x="530" y="184" width="185" height="22" rx="4" fill="#f3f5f9" stroke="#d9dee7"/><text x="540" y="199"><tspan font-weight="700">Write the answer</tspan> · LLM (Groq)</text>
+  </g>
+  <g stroke="#5b6577">
+    <line x1="140" y1="61" x2="168" y2="80" marker-end="url(#c1)"/>
+    <line x1="140" y1="161" x2="168" y2="142" marker-end="url(#c1)"/>
+    <line x1="306" y1="54" x2="334" y2="54" marker-end="url(#c1)"/>
+    <line x1="306" y1="112" x2="334" y2="112" marker-end="url(#c1)"/>
+    <line x1="306" y1="170" x2="334" y2="170" marker-end="url(#c1)"/>
+    <line x1="500" y1="112" x2="526" y2="112" marker-end="url(#c1)"/>
+  </g>
+  <text x="10" y="220" font-size="8.8" fill="#5b6577">Each engine sits behind its own small interface: it can be swapped through configuration, or replaced by a fake in tests.</text>
+</svg>
