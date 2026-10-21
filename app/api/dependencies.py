@@ -5,16 +5,27 @@ The ``Container`` is built once in the lifespan (``app/main.py``) and stored on
 """
 
 from dataclasses import dataclass
-from typing import cast
+from typing import Annotated, cast
 
-from fastapi import Request
+from fastapi import Depends, Request
+
+from app.application.extract_names import ExtractNames
+from app.application.ports import PdfRasterizer
 
 
 @dataclass(frozen=True)
 class Container:
     """Everything the API layer needs, already wired by the composition root."""
 
+    rasterizer: PdfRasterizer
+    extract_names: ExtractNames
+
 
 def get_container(request: Request) -> Container:
     """Return the container the lifespan stored on the app."""
     return cast(Container, request.app.state.container)
+
+
+def get_extract_names(container: Annotated[Container, Depends(get_container)]) -> ExtractNames:
+    """The wired extract-names use case."""
+    return container.extract_names

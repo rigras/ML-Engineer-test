@@ -16,15 +16,34 @@ from app.api.extract import router as extract_router
 from app.api.health import router as health_router
 from app.api.middleware import RequestIdMiddleware
 from app.api.rag import router as rag_router
+from app.application.extract_names import ExtractNames
 from app.infrastructure.logging import configure_logging
+from app.infrastructure.pymupdf_rasterizer import PyMuPdfRasterizer
 from app.infrastructure.settings import Settings, load_settings
+from app.infrastructure.spacy_recognizer import SpacyPersonNameRecognizer
+from app.infrastructure.tesseract_ocr import TesseractOcrEngine
 
 logger = logging.getLogger(__name__)
 
 
 def build_container(settings: Settings) -> Container:
     """Build every adapter and use case once, from configuration."""
-    return Container()
+    rasterizer = PyMuPdfRasterizer()
+    ocr = TesseractOcrEngine(
+        languages=settings.ocr_languages,
+        confidence_floor=settings.ocr_confidence_floor,
+        timeout_seconds=settings.ocr_timeout_seconds,
+        tesseract_cmd=settings.tesseract_cmd,
+    )
+    recognizer = SpacyPersonNameRecognizer(settings.ner_model)
+    extract_names = ExtractNames(
+        rasterizer=rasterizer,
+        ocr=ocr,
+        recognizer=recognizer,
+        dpi=settings.render_dpi,
+        fuzzy_threshold=settings.fuzzy_threshold,
+    )
+    return Container(rasterizer=rasterizer, extract_names=extract_names)
 
 
 def create_app(

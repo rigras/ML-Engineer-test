@@ -4,10 +4,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from app.api.dependencies import Container
 from app.domain.errors import DomainError, InfrastructureError
 from app.infrastructure.settings import Settings
 from app.main import create_app
+from tests.unit.api.conftest import fake_container
 
 
 class _RuleBroken(DomainError):
@@ -20,7 +20,7 @@ class _EngineDown(InfrastructureError):
 
 @pytest.fixture
 def app(settings: Settings) -> FastAPI:
-    app = create_app(settings, build_container=lambda _: Container())
+    app = create_app(settings, build_container=fake_container)
 
     @app.get("/boom/domain")
     def domain() -> None:
@@ -76,7 +76,7 @@ def test_unhandled_error_is_logged_with_stack_trace(
 def test_request_validation_error_has_the_same_shape(
     make_client: Callable[..., TestClient], settings: Settings
 ) -> None:
-    app = create_app(settings, build_container=lambda _: Container())
+    app = create_app(settings, build_container=fake_container)
 
     @app.get("/typed")
     def typed(n: int) -> int:
