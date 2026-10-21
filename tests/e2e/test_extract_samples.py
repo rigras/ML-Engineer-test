@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from app.infrastructure.settings import Settings
 from app.main import create_app
 from app.models.schemas import ExtractionResponse
 from tests.conftest import SAMPLE_PAGE_COUNTS, sample_bytes
@@ -18,8 +19,13 @@ GOLDEN = json.loads(
 
 
 @pytest.fixture(scope="module")
-def client(tesseract_cmd: str | None) -> Iterator[TestClient]:
-    with TestClient(create_app()) as client:
+def client(
+    env_settings: Settings, tesseract_cmd: str | None, tmp_path_factory: pytest.TempPathFactory
+) -> Iterator[TestClient]:
+    # The app also opens the vector store at startup; keep it out of the repo.
+    store = tmp_path_factory.mktemp("chroma")
+    settings = env_settings.model_copy(update={"vector_store_path": str(store)})
+    with TestClient(create_app(settings)) as client:
         yield client
 
 

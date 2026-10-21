@@ -4,6 +4,7 @@ The ``Container`` is built once in the lifespan (``app/main.py``) and stored on
 ``app.state``; providers only read it — they never construct anything.
 """
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Annotated, cast
 
@@ -11,6 +12,7 @@ from fastapi import Depends, Request
 
 from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
+from app.application.ingest_document import IngestDocument
 from app.application.ports import PdfRasterizer
 
 
@@ -21,6 +23,9 @@ class Container:
     upload_limits: UploadLimits
     rasterizer: PdfRasterizer
     extract_names: ExtractNames
+    ingest_document: IngestDocument
+    # Run by the lifespan at shutdown, e.g. to release the vector store's files.
+    on_shutdown: tuple[Callable[[], None], ...] = ()
 
 
 def get_container(request: Request) -> Container:

@@ -18,8 +18,11 @@ from app.api.middleware import RequestIdMiddleware
 from app.api.rag import router as rag_router
 from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
+from app.application.ingest_document import IngestDocument
+from app.infrastructure.chroma_vector_store import ChromaVectorStore
 from app.infrastructure.logging import configure_logging
 from app.infrastructure.pymupdf_rasterizer import PyMuPdfRasterizer
+from app.infrastructure.sentence_transformer_embedder import SentenceTransformerEmbedder
 from app.infrastructure.settings import Settings, load_settings
 from app.infrastructure.spacy_recognizer import SpacyPersonNameRecognizer
 from app.infrastructure.tesseract_ocr import TesseractOcrEngine
@@ -44,10 +47,22 @@ def build_container(settings: Settings) -> Container:
         dpi=settings.render_dpi,
         fuzzy_threshold=settings.fuzzy_threshold,
     )
+    embedder = SentenceTransformerEmbedder(settings.embedding_model)
+    store = ChromaVectorStore(settings.vector_store_path, settings.vector_store_collection)
+    ingest_document = IngestDocument(
+        rasterizer=rasterizer,
+        ocr=ocr,
+        embedder=embedder,
+        store=store,
+        dpi=settings.render_dpi,
+        max_tokens=settings.chunk_max_tokens,
+    )
     return Container(
         upload_limits=UploadLimits(settings.max_upload_bytes, settings.max_pages),
         rasterizer=rasterizer,
         extract_names=extract_names,
+        ingest_document=ingest_document,
+        on_shutdown=(store.close,),
     )
 
 
@@ -61,9 +76,12 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         configure_logging(resolved.log_level)
-        app.state.container = build_container(resolved)
+        container = build_container(resolved)
+        app.state.container = container
         logger.info("startup_completed")
         yield
+        for release in container.on_shutdown:
+            release()
 
     app = FastAPI(title="Document Intelligence Service", lifespan=lifespan)
     app.add_middleware(RequestIdMiddleware)

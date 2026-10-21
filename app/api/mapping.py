@@ -5,6 +5,7 @@ import json
 from pydantic import TypeAdapter, ValidationError
 
 from app.application.extract_names import ExtractionResult
+from app.application.ingest_document import IngestResult
 from app.domain.errors import NamesInvalid
 from app.domain.name_matching import RequestedName
 from app.models import schemas
@@ -58,3 +59,8 @@ def to_extraction_response(result: ExtractionResult) -> schemas.ExtractionRespon
             for match in result.matches
         ],
     )
+
+
+def to_ingest_response(result: IngestResult) -> schemas.IngestResponse:
+    """Map an ingestion to ``IngestResponse``; re-ingesting the same PDF reports the same count."""
+    return schemas.IngestResponse(status="ingested", chunks_stored=result.chunk_count)

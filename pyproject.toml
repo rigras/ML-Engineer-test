@@ -4,7 +4,6 @@ version = "0.1.0"
 description = "Document intelligence service: OCR person-name extraction with PDF-point boxes, fuzzy matching and RAG."
 requires-python = ">=3.12,<3.13"
 
-# RAG libraries (embeddings, vector store, LLM client) are added by the RAG epic.
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
@@ -20,6 +19,10 @@ dependencies = [
     "en-core-web-lg @ https://github.com/explosion/spacy-models/releases/download/en_core_web_lg-3.8.0/en_core_web_lg-3.8.0-py3-none-any.whl",
     # Fuzzy matching (TRD ADR-005)
     "rapidfuzz>=3.14",
+    # RAG: embeddings + reranker runtime (ADR-009, ADR-014) on CPU-only torch, vector store (ADR-008)
+    "sentence-transformers>=6.2,<7",
+    "torch>=2.14,<3",
+    "chromadb>=1.5.9,<1.6",
 ]
 
 [project.optional-dependencies]
@@ -34,6 +37,15 @@ dev = [
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+# torch from the CPU-only wheel index: the GPU wheels are GBs and never used here (ADR-009).
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu" }]
+
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
 
 [tool.hatch.metadata]
 allow-direct-references = true
@@ -106,6 +118,11 @@ forbidden_modules = [
     "pytesseract",
     "PIL",
     "spacy",
+    "chromadb",
+    "sentence_transformers",
+    "torch",
+    "transformers",
+    "numpy",
 ]
 
 [[tool.importlinter.contracts]]

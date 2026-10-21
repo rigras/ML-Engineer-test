@@ -51,3 +51,22 @@ def test_load_settings_names_the_environment_variable(monkeypatch: pytest.Monkey
 
     with pytest.raises(ConfigurationInvalid, match="DOCINTEL_FUZZY_THRESHOLD"):
         load_settings(env_file=None)
+
+
+def test_rag_ingest_defaults() -> None:
+    settings = Settings(_env_file=None)
+
+    assert settings.embedding_model == "intfloat/multilingual-e5-small"
+    assert settings.chunk_max_tokens == 250
+    assert settings.vector_store_path == ".chroma"
+    assert settings.vector_store_collection == "chunks"
+
+
+@pytest.mark.parametrize("value", ["0", "512", "600"])
+def test_chunk_budget_must_fit_the_embedder_window(
+    monkeypatch: pytest.MonkeyPatch, value: str
+) -> None:
+    monkeypatch.setenv("DOCINTEL_CHUNK_MAX_TOKENS", value)
+
+    with pytest.raises(ConfigurationInvalid, match="DOCINTEL_CHUNK_MAX_TOKENS"):
+        load_settings(env_file=None)

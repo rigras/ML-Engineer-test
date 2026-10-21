@@ -83,3 +83,15 @@ class NerModelUnavailable(InfrastructureError):
     """The configured NER model cannot be loaded."""
 
     code = "ner_model_unavailable"
+
+
+class EmbeddingModelUnavailable(InfrastructureError):
+    """The configured embedding model cannot be loaded."""
+
+    code = "embedding_model_unavailable"
+
+
+class VectorStoreUnavailable(InfrastructureError):
+    """The vector store failed to read or write chunks."""
+
+    code = "vector_store_unavailable"

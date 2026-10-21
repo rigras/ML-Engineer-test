@@ -1,7 +1,9 @@
 """In-memory fakes of the application ports (CONSTITUTION §7: fakes, not mocks)."""
 
+import math
 from collections.abc import Iterator, Mapping, Sequence
 
+from app.domain.chunking import Chunk
 from app.domain.document import Page, PageImage, PdfInfo, Word
 from app.domain.geometry import BoundingBox
 from app.domain.persons import PersonSpan
@@ -76,3 +78,66 @@ def line_of_words(line: int, text: str, y: float | None = None) -> list[Word]:
         words.append(Word(token, BoundingBox(x, top, width, 12.0), 95.0, (1, 1, line)))
         x += width + 4.0
     return words
+
+
+class FakeEmbedder:
+    """Letter-frequency vectors: texts sharing letters are close; whitespace-word tokens."""
+
+    def __init__(self) -> None:
+        self.passage_calls = 0
+        self.question_calls = 0
+
+    def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
+        self.passage_calls += 1
+        return [_letter_vector(text) for text in texts]
+
+    def embed_question(self, text: str) -> list[float]:
+        self.question_calls += 1
+        return _letter_vector(text)
+
+    def count_tokens(self, text: str) -> int:
+        return len(text.split())
+
+
+class InMemoryVectorStore:
+    """Keeps chunks in a dict; cosine search; raises ``error`` on every call when set."""
+
+    def __init__(self, error: Exception | None = None) -> None:
+        self.rows: dict[str, tuple[Chunk, list[float]]] = {}
+        self.error = error
+        self.search_calls = 0
+
+    def replace_document(
+        self,
+        document_id: str,
+        chunks: Sequence[Chunk],
+        embeddings: Sequence[Sequence[float]],
+    ) -> None:
+        self._fail_if_set()
+        self.rows = {k: v for k, v in self.rows.items() if v[0].document_id != document_id}
+        for chunk, embedding in zip(chunks, embeddings, strict=True):
+            self.rows[chunk.id] = (chunk, list(embedding))
+
+    def search(self, embedding: Sequence[float], limit: int) -> list[Chunk]:
+        self._fail_if_set()
+        self.search_calls += 1
+        ranked = sorted(self.rows.values(), key=lambda row: -_cosine(embedding, row[1]))
+        return [chunk for chunk, _ in ranked[:limit]]
+
+    def all_chunks(self) -> list[Chunk]:
+        self._fail_if_set()
+        return [chunk for chunk, _ in self.rows.values()]
+
+    def _fail_if_set(self) -> None:
+        if self.error is not None:
+            raise self.error
+
+
+def _letter_vector(text: str) -> list[float]:
+    counts = [float(text.casefold().count(letter)) for letter in "abcdefghijklmnopqrstuvwxyz"]
+    norm = math.sqrt(sum(c * c for c in counts)) or 1.0
+    return [c / norm for c in counts]
+
+
+def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
+    return sum(x * y for x, y in zip(a, b, strict=True))

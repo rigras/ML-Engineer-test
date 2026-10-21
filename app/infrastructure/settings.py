@@ -13,6 +13,7 @@ from app.domain.errors import InfrastructureError
 
 ENV_PREFIX = "DOCINTEL_"
 DEFAULT_ENV_FILE = ".env"
+EMBEDDER_MAX_TOKENS = 512
 
 
 class ConfigurationInvalid(InfrastructureError):
@@ -38,6 +39,12 @@ class Settings(BaseSettings):
     tesseract_cmd: str | None = None
     ner_model: str = Field(default="en_core_web_lg", min_length=1)  # ADR-013
     fuzzy_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
+    # RAG (ADR-008, ADR-009, ADR-015)
+    embedding_model: str = Field(default="intfloat/multilingual-e5-small", min_length=1)
+    # Below e5's 512-token window: anything past it would be silently ignored (ADR-015).
+    chunk_max_tokens: int = Field(default=250, gt=0, lt=EMBEDDER_MAX_TOKENS)
+    vector_store_path: str = Field(default=".chroma", min_length=1)
+    vector_store_collection: str = Field(default="chunks", min_length=3)  # Chroma's minimum
 
 
 def load_settings(env_file: str | None = DEFAULT_ENV_FILE) -> Settings:

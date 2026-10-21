@@ -24,6 +24,8 @@ STATUS_BY_CODE: dict[str, int] = {
     "names_invalid": 422,
     "ocr_unavailable": 503,
     "ner_model_unavailable": 503,
+    "embedding_model_unavailable": 503,
+    "vector_store_unavailable": 503,
 }
 DOMAIN_DEFAULT_STATUS = 422
 INFRASTRUCTURE_DEFAULT_STATUS = 503

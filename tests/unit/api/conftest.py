@@ -7,10 +7,17 @@ from fastapi.testclient import TestClient
 from app.api.dependencies import Container
 from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
+from app.application.ingest_document import IngestDocument
 from app.application.ports import PdfRasterizer
 from app.infrastructure.settings import Settings
 from app.main import create_app
-from tests.fakes import FakeOcrEngine, FakeRasterizer, FakeRecognizer
+from tests.fakes import (
+    FakeEmbedder,
+    FakeOcrEngine,
+    FakeRasterizer,
+    FakeRecognizer,
+    InMemoryVectorStore,
+)
 
 
 def fake_container(
@@ -18,20 +25,31 @@ def fake_container(
     rasterizer: PdfRasterizer | None = None,
     ocr: FakeOcrEngine | None = None,
     recognizer: FakeRecognizer | None = None,
+    store: InMemoryVectorStore | None = None,
 ) -> Container:
     """A container wired with in-memory fakes: no model, no binary."""
     rasterizer = rasterizer or FakeRasterizer(pages=1)
+    ocr = ocr or FakeOcrEngine()
     extract_names = ExtractNames(
         rasterizer=rasterizer,
-        ocr=ocr or FakeOcrEngine(),
+        ocr=ocr,
         recognizer=recognizer or FakeRecognizer(),
         dpi=settings.render_dpi,
         fuzzy_threshold=settings.fuzzy_threshold,
+    )
+    ingest_document = IngestDocument(
+        rasterizer=rasterizer,
+        ocr=ocr,
+        embedder=FakeEmbedder(),
+        store=store if store is not None else InMemoryVectorStore(),
+        dpi=settings.render_dpi,
+        max_tokens=settings.chunk_max_tokens,
     )
     return Container(
         upload_limits=UploadLimits(settings.max_upload_bytes, settings.max_pages),
         rasterizer=rasterizer,
         extract_names=extract_names,
+        ingest_document=ingest_document,
     )
 
 

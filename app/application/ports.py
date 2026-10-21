@@ -3,9 +3,10 @@
 Signatures use domain types only, so adapters can be swapped without touching use cases.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from typing import Protocol
 
+from app.domain.chunking import Chunk
 from app.domain.document import Page, PageImage, PdfInfo
 from app.domain.persons import PersonSpan
 
@@ -35,4 +36,41 @@ class PersonNameRecognizer(Protocol):
 
     def recognize(self, text: str) -> list[PersonSpan]:
         """Return PERSON spans, honorifics trimmed; raises ``NerModelUnavailable``."""
+        ...
+
+
+class Embedder(Protocol):
+    """Turns text into vectors whose closeness reflects meaning, and counts its tokens."""
+
+    def embed_passages(self, texts: Sequence[str]) -> list[list[float]]:
+        """One vector per stored text; raises ``EmbeddingModelUnavailable``."""
+        ...
+
+    def embed_question(self, text: str) -> list[float]:
+        """The vector of a question, comparable with passage vectors."""
+        ...
+
+    def count_tokens(self, text: str) -> int:
+        """Tokens the model reads for ``text`` (sizes chunks, ADR-015)."""
+        ...
+
+
+class VectorStore(Protocol):
+    """Keeps chunks with their vectors; every method raises ``VectorStoreUnavailable``."""
+
+    def replace_document(
+        self,
+        document_id: str,
+        chunks: Sequence[Chunk],
+        embeddings: Sequence[Sequence[float]],
+    ) -> None:
+        """Drop every stored chunk of ``document_id``, then store ``chunks`` (ADR-007)."""
+        ...
+
+    def search(self, embedding: Sequence[float], limit: int) -> list[Chunk]:
+        """Up to ``limit`` chunks nearest to ``embedding``, nearest first."""
+        ...
+
+    def all_chunks(self) -> list[Chunk]:
+        """Every stored chunk (BM25 ranks them per question — ADR-014)."""
         ...
