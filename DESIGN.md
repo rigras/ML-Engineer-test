@@ -1,122 +1,98 @@
 # DESIGN — Document Intelligence Service
 
-A FastAPI service that OCRs scanned PDFs, returns every **person name with its page and
-box in PDF points**, fuzzy-matches those names against a requested list, and answers
-questions over ingested documents with grounded RAG. The full technical record is the
-[TRD](docs/trds/document-intelligence-trd.md) and its ADRs; this page is the summary.
+> **Visual version (3 pages): [DESIGN.pdf](DESIGN.pdf)** — same content, built from
+> [`docs/design/design.html`](docs/design/design.html).
+
+Scanned PDF → every person name with its **page and box in PDF points** → fuzzy match
+against a requested list; plus RAG answers grounded in ingested documents. FastAPI,
+Python 3.12, hexagonal architecture. Full record: the
+[TRD](docs/trds/document-intelligence-trd.md) and ADR-001…015.
+
+| NER P / R | Boxes verified | Retrieval hit@1 | Answers pass^3 | Ungrounded sources |
+|---|---|---|---|---|
+| 1.00 / 0.98 | 54 / 54 | 10 / 10 | 13 / 13 | 0 |
 
 ## 1. Components
 
-Hexagonal architecture: the domain is pure Python, use cases depend only on **ports**
-(`Protocol`s), and every library sits in one adapter. `app/main.py` is the only place
-adapters are built; `import-linter` fails the build if a layer imports the wrong way.
+![Components: driving adapters, use cases, ports, adapters](docs/design/components.svg)
 
-```mermaid
-flowchart LR
-    UI[Audit viewer<br/>pdf.js] --> API
-    API[FastAPI routers<br/>validate · call · map] --> EX[ExtractNames] & IN[IngestDocument] & AQ[AnswerQuestion]
-    EX --> D1[alignment · geometry · matching]
-    IN & AQ --> D2[chunking · BM25 · grounding]
-    EX & IN --> R[[PdfRasterizer]] & O[[OcrEngine]]
-    EX --> N[[PersonNameRecognizer]]
-    IN & AQ --> E[[Embedder]] & V[[VectorStore]]
-    AQ --> K[[Reranker]] & G[[AnswerGenerator]]
-    R -.-> PyMuPDF
-    O -.-> Tesseract
-    N -.-> spaCy
-    E -.-> e5[multilingual-e5-small]
-    V -.-> Chroma[Chroma embedded]
-    K -.-> CE[mmarco cross-encoder]
-    G -.-> LLM[OpenAI-compatible LLM]
-```
+Use cases depend only on **ports** (`Protocol`s); each library lives in one adapter;
+`app/main.py` builds the adapters once at startup and injects them. `import-linter` fails
+the build if domain or application import FastAPI, Pydantic or a vendor SDK.
 
-`domain/` (pure) ← `application/` (use cases + ports) ← `infrastructure/` (adapters) and
-`api/` (HTTP). Domain and application never import FastAPI, Pydantic or a vendor SDK.
+## 2. Extract flow
 
-## 2. Flows
+![Extract pipeline: validate, rasterize, OCR, pixels to points, NER and align, match](docs/design/extract-flow.svg)
 
-**Extract.** Validate the upload by content → render every page at 300 DPI → Tesseract
-returns words with pixel boxes → converted **once** to PDF points (`pt = px × 72 / DPI`,
-top-left origin) → page text is rebuilt from the words while recording each word's
-character offsets → spaCy marks PERSON spans → each span maps back to exactly the words
-it covers → their boxes merge into one box per occurrence (honorifics excluded) → names
-are normalized (case, accents, punctuation) and compared to the requested list with
-`max(ratio, token_sort_ratio) ≥ 0.90`.
+Names are located by **character offsets**, not by searching the text: one box per real
+occurrence, repeated names handled, honorifics excluded. Matching is
+`max(ratio, token_sort_ratio) ≥ 0.90` on casefolded, accent-stripped names
+(`María González` ~ `Maria Gonzalez`, word order tolerated, no substring inflation).
+Pages are 0-based; origin top-left (a bottom-left consumer flips
+`y' = page_height − y − height`).
 
-```mermaid
-sequenceDiagram
-    participant C as Client
-    participant A as API
-    participant U as AnswerQuestion
-    participant S as Chroma
-    participant L as LLM
-    C->>A: POST /api/ask {question}
-    A->>U: execute(question)
-    U->>S: dense top-10 (e5) + all chunks for BM25 top-10
-    U->>U: rerank union (cross-encoder) → top-5
-    alt best score < gate
-        U-->>A: "not in the documents", no LLM call
-    else relevant
-        U->>L: numbered passages as data + question
-        L-->>U: answer citing [n]
-        U->>U: sources = pages of the cited passages (code, not LLM)
-    end
-    A-->>C: {answer, sources}
-```
+## 3. Engineering practices
 
-**Ingest.** Same OCR → OCR layout blocks packed into ≤ 250-token, page-bounded chunks
-that never cut a word → embedded → upserted with id `{sha256(pdf)}:{chunk}`, so a second
-document can't overwrite the first and re-ingesting the same file changes nothing.
-
-## 3. Technology choices and trade-offs
-
-| Need | Choice | Why / trade-off |
-|---|---|---|
-| OCR | Tesseract 5 | Word boxes + confidence, light, CPU. Weaker on poor scans → swap the `OcrEngine` adapter (docTR, cloud OCR). |
-| PDF → image | PyMuPDF | Page size in points, handles rotation. AGPL → pypdfium2 if sold commercially. |
-| NER | spaCy `en_core_web_lg` | Only model that met P/R ≥ 0.90 with zero ORG leaks on the samples (P 1.00 / R 0.98); no torch. |
-| Matching | rapidfuzz on normalized full names | Full-string similarity, no substring inflation; `thefuzz` is now a wrapper over it. |
-| Embeddings | `multilingual-e5-small` | Spanish + English, 384-d, CPU. |
-| Retrieval | dense ∪ BM25 → cross-encoder | Dense misses exact names/figures, BM25 catches them; the reranker's score also powers the "not found" gate. |
-| Vector store | Chroma, embedded | Zero infrastructure (allowed by the brief); persisted on a Docker volume. |
-| LLM | Groq `gpt-oss-120b` via the openai SDK | Any OpenAI-compatible endpoint by config; SDK gives timeouts and backoff retries. |
-
-## 4. Scaling to 1000+ PDFs/hour
-
-1000 PDFs/h is 0.28 PDF/s. OCR dominates at ~2–3 CPU-seconds per page, so a 5-page
-average needs ~4 cores busy all the time — ~8 with headroom. The CPU work moves out of
-the request:
-
-1. **Async jobs.** `POST` stores the PDF in object storage, enqueues a job and returns
-   `202` + job id; results are fetched or pushed by webhook.
-2. **Stateless OCR workers** (this same image) consume the queue and autoscale on
-   queue depth; pages of one PDF can run in parallel.
-3. **OCR cache by content hash**: extract and ingest of the same file OCR it once.
-4. **Vector store as a service** with native hybrid search (Qdrant/OpenSearch) behind
-   the same `VectorStore` port; BM25-per-query stops scaling past ~10⁴ chunks.
-5. **GPU or hosted reranker/embedder**; paid LLM tier with a concurrency limit sized to
-   its rate limit.
-6. **Tracing** (OpenTelemetry) per stage, on top of today's JSON logs with `request_id`.
-
-## 5. Failure modes and mitigations
-
-| Failure | Mitigation |
+| | |
 |---|---|
-| Not a PDF, empty, too big, too many pages, encrypted | Checked by content before any OCR → 4xx with a specific `error.code`. |
-| Tesseract missing or stuck | Per-page timeout → 503 `ocr_unavailable` with `request_id`. |
-| Poor scan / low-confidence words | Words below a confidence floor are dropped, so no box lands on noise. |
-| LLM slow, rate-limited or down | SDK timeout + exponential-backoff retries → 503/502 with a specific code; extract and ingest keep working. |
-| LLM invents a source | Impossible: `sources` are built by code from the passages actually sent and cited; an uncited answer becomes "not found". |
-| Question not covered by the documents | Rerank-score gate answers "not found" without calling the LLM. |
-| Prompt injection inside a document | Passages are delimited and declared data; the LLM has no tools; the viewer renders answers as plain text. |
-| Duplicate ingest | Content-hash ids make it an idempotent upsert. |
+| Configuration | One `Settings` object; every host, model, threshold, DPI and limit is a `DOCINTEL_*` variable (`.env.example`). |
+| Validation | By content at the edge: `%PDF-`, empty, size, page count, encrypted/corrupt, malformed `names` — each a specific 4xx code. |
+| Resilience | Domain errors → 4xx, infrastructure → 5xx with `request_id`; LLM timeout + retries; OCR per-page timeout. |
+| Observability | Structured JSON logs with event names and `request_id`; names and document text never logged. |
+| Tests | ~870: pure domain, use cases on fakes, real-engine adapters, end-to-end on the samples; plus 5 eval scripts. |
 
-## 6. Routing between models by query complexity
+## 4. Ask sequence
 
-`AnswerGenerator` is a port, so routing is one more adapter — no use case changes. A
-deterministic router scores each question **after** retrieval: number of relevant
-passages above the gate, cues for comparison, aggregation or "why", and question length.
-Single-fact lookups go to a small fast model (`gpt-oss-20b`); multi-passage or reasoning
-questions go to the large one. If the small model's answer has no valid citation while
-the gate said evidence exists, the router retries once on the large model. Thresholds are
-tuned on the golden Q&A set (pass^3 and cost per answer), never by the LLM itself.
+![Ask sequence: hybrid retrieval, rerank, gate, LLM, grounding](docs/design/ask-sequence.svg)
+
+**Ingest** packs OCR layout blocks into ≤ 250-token, page-bounded chunks (a unit that
+doesn't fit moves whole to the next chunk, so no word is cut) with IDs
+`sha256(pdf)[:16]:chunk` — unique across documents, idempotent on re-ingest. **Hybrid +
+rerank** because dense search misses exact names and figures and BM25 catches them; the
+reranker's score, unlike e5 similarity, separates relevant from irrelevant, so it powers
+the "not found" gate.
+
+## 5. Technology choices and trade-offs
+
+| Need | Choice | Why | Trade-off / rejected |
+|---|---|---|---|
+| OCR | Tesseract 5 | Word boxes + confidence, light, CPU | Weak on poor scans → docTR / cloud OCR behind `OcrEngine` |
+| PDF → image | PyMuPDF | Page size in points, rotation | AGPL → pypdfium2 for commercial use |
+| NER | spaCy `en_core_web_lg` | Only model with P/R ≥ 0.90 and zero ORG leaks; no torch | `sm` tagged "Atlas"/"Forbes" as people |
+| Matching | rapidfuzz | Full-string similarity | thefuzz is a wrapper over it |
+| Embeddings | multilingual-e5-small | Spanish + English, CPU | MiniLM English-only; bge-m3 too heavy |
+| Reranker | mmarco-mMiniLMv2-L12 | Multilingual, 1.5 s/question on CPU | bge-reranker-v2-m3: 21 s on CPU |
+| Vector store | Chroma, embedded | Zero infrastructure; volume in Docker | Single writer; Qdrant one adapter away |
+| LLM | Groq gpt-oss-120b | Any OpenAI-compatible endpoint by config | Free tier ≈ 30 req/min |
+
+## 6. Scaling to 1000+ PDFs/hour
+
+![Scaling: async API, object storage, queue, autoscaled OCR workers, results and vector DB](docs/design/scaling.svg)
+
+1000 PDFs/h = 0.28 PDF/s; at ~2–3 CPU-s per page, a 5-page average keeps ~4 cores busy
+(~8 with headroom). The upload returns `202` + job id, stateless OCR workers (this same
+image) autoscale on queue depth, OCR is cached by content hash, and the vector store
+becomes a service with native hybrid search.
+
+## 7. Failure modes and mitigations
+
+| Failure | Mitigation | Response |
+|---|---|---|
+| Not a PDF / empty / too big / encrypted | Checked by content before any OCR | 4xx, specific code |
+| Tesseract missing or stuck | Per-page timeout | 503 `ocr_unavailable` |
+| Noisy scan | Low-confidence words dropped | fewer names, no box over noise |
+| LLM slow / rate-limited / down | SDK timeout + backoff; extract/ingest unaffected | 503/502 `llm_*` |
+| LLM invents a source | Sources built from cited passages only | impossible by construction |
+| Question not covered | Rerank-score gate, no LLM call | "not found" |
+| Prompt injection | Passages delimited as data, no tools, plain-text UI | golden probe passes |
+| Duplicate ingest | Content-hash IDs | idempotent upsert |
+| ALL-CAPS documents | Known limit of the NER | documented |
+
+## 8. Routing between models by query complexity
+
+`AnswerGenerator` is a port, so a router is one more adapter. A **deterministic** router
+scores the question after retrieval (passages above the gate, comparison / aggregation /
+"why" cues, length): simple lookups → small fast model (`gpt-oss-20b`), multi-passage or
+reasoning → large model (`gpt-oss-120b`); if the small model returns no valid citation
+while the gate found evidence, retry once on the large one. Thresholds are tuned on the
+golden Q&A set (pass^3 and cost), never decided by the LLM.
