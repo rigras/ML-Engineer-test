@@ -16,6 +16,7 @@ from app.api.extract import router as extract_router
 from app.api.health import router as health_router
 from app.api.middleware import RequestIdMiddleware
 from app.api.rag import router as rag_router
+from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
 from app.infrastructure.logging import configure_logging
 from app.infrastructure.pymupdf_rasterizer import PyMuPdfRasterizer
@@ -43,7 +44,11 @@ def build_container(settings: Settings) -> Container:
         dpi=settings.render_dpi,
         fuzzy_threshold=settings.fuzzy_threshold,
     )
-    return Container(rasterizer=rasterizer, extract_names=extract_names)
+    return Container(
+        upload_limits=UploadLimits(settings.max_upload_bytes, settings.max_pages),
+        rasterizer=rasterizer,
+        extract_names=extract_names,
+    )
 
 
 def create_app(

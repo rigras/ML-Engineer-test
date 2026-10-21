@@ -5,7 +5,9 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.api.dependencies import Container
+from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
+from app.application.ports import PdfRasterizer
 from app.infrastructure.settings import Settings
 from app.main import create_app
 from tests.fakes import FakeOcrEngine, FakeRasterizer, FakeRecognizer
@@ -13,7 +15,7 @@ from tests.fakes import FakeOcrEngine, FakeRasterizer, FakeRecognizer
 
 def fake_container(
     settings: Settings,
-    rasterizer: FakeRasterizer | None = None,
+    rasterizer: PdfRasterizer | None = None,
     ocr: FakeOcrEngine | None = None,
     recognizer: FakeRecognizer | None = None,
 ) -> Container:
@@ -26,7 +28,11 @@ def fake_container(
         dpi=settings.render_dpi,
         fuzzy_threshold=settings.fuzzy_threshold,
     )
-    return Container(rasterizer=rasterizer, extract_names=extract_names)
+    return Container(
+        upload_limits=UploadLimits(settings.max_upload_bytes, settings.max_pages),
+        rasterizer=rasterizer,
+        extract_names=extract_names,
+    )
 
 
 @pytest.fixture

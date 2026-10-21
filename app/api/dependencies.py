@@ -9,6 +9,7 @@ from typing import Annotated, cast
 
 from fastapi import Depends, Request
 
+from app.api.upload import UploadLimits
 from app.application.extract_names import ExtractNames
 from app.application.ports import PdfRasterizer
 
@@ -17,6 +18,7 @@ from app.application.ports import PdfRasterizer
 class Container:
     """Everything the API layer needs, already wired by the composition root."""
 
+    upload_limits: UploadLimits
     rasterizer: PdfRasterizer
     extract_names: ExtractNames
 
@@ -26,6 +28,4 @@ def get_container(request: Request) -> Container:
     return cast(Container, request.app.state.container)
 
 
-def get_extract_names(container: Annotated[Container, Depends(get_container)]) -> ExtractNames:
-    """The wired extract-names use case."""
-    return container.extract_names
+ContainerDep = Annotated[Container, Depends(get_container)]
