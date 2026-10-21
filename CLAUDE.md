@@ -50,7 +50,8 @@ uv run mypy app                      # type-check (strict)
 uv run lint-imports                  # hexagonal dependency contracts
 uv run pytest -m "not integration"   # fast suite (fakes)
 uv run pytest                        # full suite (needs Tesseract installed)
-uv run uvicorn app.main:app --reload # run locally
+uv run uvicorn app.main:app --reload # run locally → http://localhost:8000/viewer
+docker compose up --build            # container (APP_PORT overrides 8000)
 ```
 
 ## Layout

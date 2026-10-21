@@ -209,8 +209,11 @@ independent) and no product learning loop beyond the offline golden set (§11).
   seconds-long and synchronous. The 1000+ PDFs/hour path (queue + workers) is designed
   in `DESIGN.md`, not built.
 - **Deployment:** local `uv run uvicorn` with embedded vector store; bonus
-  `docker compose up` with the app container plus an **isolated vector-DB service**
-  healthchecks, non-root user, models baked into the image.
+  `docker compose up` with **one app container** (Tesseract inside, models baked into the
+  image, non-root user, read-only filesystem, healthcheck) and the embedded Chroma files
+  on a named volume. *Owner decision 2026-10-21: no separate vector-DB service — the
+  brief accepts embedded Chroma, and the `VectorStore` port keeps a server (Chroma HTTP,
+  Qdrant) a one-adapter change (ADR-008).*
 - **Tooling:** uv (PRD-mandated), ruff (lint + format), mypy (strict), import-linter
   (enforces the hexagonal dependency rule in CI), pytest + coverage.
 
@@ -461,7 +464,9 @@ golden-set entry before the fix.
   adapter), pgvector, LanceDB (§8.2).
 - **Decision:** one Chroma adapter; `VECTOR_STORE_MODE=embedded|http` selects
   `PersistentClient(path)` or `HttpClient(host, port)` from config. Compose runs the
-  `chromadb/chroma` service with a volume and healthcheck. Vectors are always computed
+  `chromadb/chroma` service with a volume and healthcheck. *Amended 2026-10-21 (owner):
+  only the embedded mode ships — compose persists its files on a volume; HTTP mode is
+  the documented scaling step, not built.* Vectors are always computed
   by our `Embedder` and passed explicitly (Chroma's embedding function disabled).
   Writes use `upsert`. Client exceptions are translated to `VectorStoreUnavailable`.
   *Dense-only retrieval superseded by [ADR-014](../adrs/ADR-014-hybrid-retrieval-and-reranking.md)
@@ -520,7 +525,7 @@ architecture/practices).
 | P0 Foundation | Hexagonal skeleton, settings, JSON logging + request id, error hierarchy + HTTP mapping, upload validation, tooling (ruff, mypy, import-linter, pytest), `/health` | — | `validate` gate green; import-linter contract passes |
 | P1 Extraction | Rasterize + OCR adapter (PDF points), NER adapter, alignment/geometry domain, matching domain, `ExtractNames`, `/api/extract`, golden set + evals | P0, spike S1 | Thresholds in §1 met on `sample_pdfs`; e2e test green |
 | P2 RAG | Chunker, embedding + vector-store + LLM adapters, `IngestDocument`, `AnswerQuestion`, `/api/ingest`, `/api/ask`, RAG evals | P0, P1's OCR | Unique IDs across docs proven by test; retrieval hit@k 100 %; pass^3 ≥ 0.80 |
-| P3 Bonus | Dockerfile + `docker-compose.yml` (app + isolated vector DB), audit viewer | P1, P2 | `docker compose up` → `/health` ok; viewer overlays boxes on the 3 samples |
+| P3 Bonus | Dockerfile + `docker-compose.yml` (app + embedded Chroma on a volume), audit viewer | P1, P2 | `docker compose up` → `/health` ok; viewer overlays boxes on the 3 samples |
 | P4 Delivery | `DESIGN.md`, `DECISIONS.md` (incl. AI-use disclosure), PR | all | PR open, gate green |
 
 ---
