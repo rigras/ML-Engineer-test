@@ -54,8 +54,9 @@ select = ["E", "F", "W", "I", "B", "UP", "S", "BLE", "N", "SIM", "RUF"]
 ignore = ["N818"]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/**" = ["S101"]
-"scripts/**" = ["S101"]
+# RUF001: curly apostrophes (`O’Brien`) are real OCR output used as test data.
+"tests/**" = ["S101", "RUF001"]
+"scripts/**" = ["S101", "RUF001"]
 
 [tool.mypy]
 strict = true
