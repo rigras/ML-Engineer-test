@@ -95,3 +95,9 @@ class VectorStoreUnavailable(InfrastructureError):
     """The vector store failed to read or write chunks."""
 
     code = "vector_store_unavailable"
+
+
+class RerankerUnavailable(InfrastructureError):
+    """The configured reranker model cannot be loaded."""
+
+    code = "reranker_unavailable"

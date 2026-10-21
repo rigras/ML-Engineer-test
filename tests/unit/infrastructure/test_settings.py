@@ -60,6 +60,7 @@ def test_rag_ingest_defaults() -> None:
     assert settings.chunk_max_tokens == 250
     assert settings.vector_store_path == ".chroma"
     assert settings.vector_store_collection == "chunks"
+    assert settings.reranker_model == "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
 
 
 @pytest.mark.parametrize("value", ["0", "512", "600"])

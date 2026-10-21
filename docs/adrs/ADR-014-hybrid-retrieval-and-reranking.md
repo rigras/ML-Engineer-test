@@ -66,7 +66,9 @@ repeated runs after warm-up:
 | `cross-encoder/ms-marco-MiniLM-L6-v2` | 22 M | 0.7 s | 0.4 s | no | no (−11.03 vs −11.43) |
 
 Both bge models break the ≤ 2 s budget by 3–10×; mmarco is the only multilingual model
-inside it. Its outputs are raw logits (no sigmoid), so `RERANK_MIN_SCORE` is calibrated
+inside it. **Re-measured with `scripts/time_reranker.py` (T-004, 2026-10-21, 20 pairs ×
+250 tokens, 10 runs after warm-up):** mmarco load 4.1 s (cached), **p50 1.55 s, p95
+1.67 s** — within budget. Its outputs are raw logits (no sigmoid), so `RERANK_MIN_SCORE` is calibrated
 on that scale. The owner authorized trading the bge model for speed; the reranker step
 itself is mandatory.
 

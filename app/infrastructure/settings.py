@@ -45,6 +45,8 @@ class Settings(BaseSettings):
     chunk_max_tokens: int = Field(default=250, gt=0, lt=EMBEDDER_MAX_TOKENS)
     vector_store_path: str = Field(default=".chroma", min_length=1)
     vector_store_collection: str = Field(default="chunks", min_length=3)  # Chroma's minimum
+    # Multilingual cross-encoder chosen by spike S6 on CPU (ADR-014).
+    reranker_model: str = Field(default="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1", min_length=1)
 
 
 def load_settings(env_file: str | None = DEFAULT_ENV_FILE) -> Settings:

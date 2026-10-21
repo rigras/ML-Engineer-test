@@ -74,3 +74,11 @@ class VectorStore(Protocol):
     def all_chunks(self) -> list[Chunk]:
         """Every stored chunk (BM25 ranks them per question — ADR-014)."""
         ...
+
+
+class Reranker(Protocol):
+    """Scores how well each passage answers a question, reading both together."""
+
+    def score(self, question: str, texts: Sequence[str]) -> list[float]:
+        """One score per text, in input order (higher = more relevant); ``[]`` for none."""
+        ...
