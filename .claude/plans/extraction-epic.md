@@ -216,8 +216,8 @@ forbidden_modules = ["fastapi", "starlette", "pydantic", "pydantic_settings", "p
 
 ```python
 @dataclass(frozen=True)
-class Container:            # app/api/dependencies.py
-    settings: Settings
+class Container:            # app/api/dependencies.py — no Settings field (see amendment below)
+    upload_limits: UploadLimits   # api-owned dataclass (max_bytes, max_pages), added in T-007
     rasterizer: PdfRasterizer
     extract_names: ExtractNames
 
@@ -225,6 +225,15 @@ def build_container(settings: Settings) -> Container   # app/main.py — the onl
 def create_app(settings: Settings | None = None,
                build_container: Callable[[Settings], Container] = build_container) -> FastAPI
 ```
+
+**Amendment (T-001 execution, 2026-10-21):** `Container` must not hold `Settings` —
+`Settings` lives in `app.infrastructure`, and T-001 + the layers contract forbid `app.api`
+importing `app.infrastructure`. The api layer owns the plain values it needs
+(`UploadLimits` in `app/api/upload.py`, T-007); `build_container` copies them from
+`Settings`. T-001's `Container` is therefore empty. Error handlers read the request id from
+`request.state` (set by the middleware), so only `middleware -> logging` is ignored.
+`create_app` loads settings via `load_settings()`, which re-raises `ValidationError` as
+`ConfigurationInvalid` naming the `DOCINTEL_*` variable (T-001 alt flow).
 
 Lifespan: `configure_logging(settings.log_level)` → `app.state.container = build_container(settings)`. Providers: `get_container(request) -> Container`, `get_extract_names(...)`. API tests pass a `build_container` returning fakes, so no model or binary is loaded. The spaCy model loads in `SpacyPersonNameRecognizer.__init__` (once, at startup); a missing model raises `NerModelUnavailable` at startup (fail fast, logged). Tesseract absence is detected per call (`OcrUnavailable` → 503), so `/health` still works without it.
 
@@ -269,7 +278,7 @@ TDD on every task: write the test, see it fail, implement, see it pass.
 
 #### CREATE `app/api/errors.py`, `app/api/middleware.py`, `app/api/health.py`, `app/api/dependencies.py`, UPDATE `app/main.py`
 - **IMPLEMENT**: handlers for `DomainError`, `InfrastructureError`, `RequestValidationError`, `Exception` (500, `logger.exception("unhandled_error")`, generic message). `RequestIdMiddleware` (pure ASGI or `BaseHTTPMiddleware`): reuse `X-Request-ID` or `uuid4().hex`, set contextvar, echo header, log `request_completed` with `method`, `path`, `status`, `duration_ms`. Health router returns `HealthResponse(status="ok")` with `response_model=HealthResponse`. `create_app` per shared contract; include `rag_router` unchanged; module-level `app = create_app()` kept for `uvicorn app.main:app` (lifespan defers heavy work, so import stays cheap).
-- **GOTCHA**: in T-001, `build_container` builds only `settings`; `rasterizer`/`extract_names` are added in T-006 — type them `| None` now? **No** — keep `Container(settings=...)` in T-001 and extend the dataclass in T-006 (rule: no speculative fields).
+- **GOTCHA**: in T-001, `Container()` is empty; `rasterizer`/`extract_names` are added in T-006 and `upload_limits` in T-007 (rule: no speculative fields). See the composition-root amendment.
 - **TESTS** `tests/unit/api/test_health.py`, `test_errors.py` (test-only routes raising a `DomainError` subclass, an `InfrastructureError` subclass, a `ValueError` → 4xx/503/500, body shape, no traceback text), `test_request_id.py` (header echo + `caplog` single `request_completed` record). Use `TestClient(create_app(build_container=fake_builder))` and `raise_server_exceptions=False` for the 500 case.
 - **VALIDATE**: `uv run pytest tests/unit -q`
 

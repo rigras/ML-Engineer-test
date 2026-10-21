@@ -1,0 +1,51 @@
+"""Typed, environment-driven configuration (CONSTITUTION §6).
+
+Every tunable value lives here with a safe default; env vars use the ``DOCINTEL_`` prefix
+and a ``.env`` file is honoured. Read once at startup by the composition root.
+"""
+
+from typing import Literal
+
+from pydantic import Field, ValidationError
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+from app.domain.errors import InfrastructureError
+
+ENV_PREFIX = "DOCINTEL_"
+DEFAULT_ENV_FILE = ".env"
+
+
+class ConfigurationInvalid(InfrastructureError):
+    """A configuration value violates its constraints; the service must not start."""
+
+    code = "configuration_invalid"
+
+
+class Settings(BaseSettings):
+    """Service configuration; invalid values fail at startup naming the key."""
+
+    model_config = SettingsConfigDict(
+        env_prefix=ENV_PREFIX, env_file=DEFAULT_ENV_FILE, extra="ignore"
+    )
+
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    max_upload_bytes: int = Field(default=20 * 1024 * 1024, gt=0)
+    max_pages: int = Field(default=50, gt=0)
+    render_dpi: int = Field(default=300, ge=72, le=600)
+    ocr_languages: str = Field(default="eng", min_length=1)
+    ocr_confidence_floor: float = Field(default=30.0, ge=0.0, le=100.0)
+    ocr_timeout_seconds: float = Field(default=60.0, gt=0.0)
+    tesseract_cmd: str | None = None
+    ner_model: str = Field(default="en_core_web_sm", min_length=1)
+    fuzzy_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
+
+
+def load_settings(env_file: str | None = DEFAULT_ENV_FILE) -> Settings:
+    """Load settings, reporting invalid values by their environment variable name."""
+    try:
+        return Settings(_env_file=env_file)
+    except ValidationError as exc:
+        problems = "; ".join(
+            f"{ENV_PREFIX}{str(error['loc'][0]).upper()}: {error['msg']}" for error in exc.errors()
+        )
+        raise ConfigurationInvalid(f"Invalid configuration: {problems}") from exc

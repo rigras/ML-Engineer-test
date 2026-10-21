@@ -98,15 +98,16 @@ honorifics excluded.
 ## Miscellaneous / Gotchas
 
 <!-- Running list — add entries as you discover things the agent repeatedly misunderstands -->
-- Windows dev box: Tesseract is **not installed** and the PATH entry
-  `C:\Program Files\Tesseract-OCR` is stale — install it (verify the id with
-  `winget search tesseract`) or run integration tests in Docker.
+- Windows dev box: Tesseract 5.5.3 lives at `C:\Program Files\Tesseract-OCR` (`eng` +
+  `osd` only). If it isn't on PATH, set `DOCINTEL_TESSERACT_CMD` in `.env`; integration
+  tests skip with a clear reason when no binary is found.
 - uv may pick Anaconda's Python 3.9 by default → spaCy's `blis` fails to build. Pin the
   interpreter (`.python-version` = 3.12 / `uv run --python 3.12`).
 - spaCy models are installed as pinned wheel URLs in `pyproject.toml`, not via
   `python -m spacy download` (uv venvs ship without pip).
 - OCR text contains curly apostrophes (`O’Brien`); the Windows console (cp1252)
-  mangles them — set `PYTHONIOENCODING=utf-8` when printing.
+  mangles them — set `PYTHONIOENCODING=utf-8` when printing. Same fix when piping
+  `lint-imports` output (its spinner emoji crashes cp1252 with `UnicodeEncodeError`).
 - The repo lives under a OneDrive path with spaces — quote paths in shell commands.
 - spaCy `en_core_web_sm` tags the codename `'Atlas'` (company_memo.pdf) as PERSON —
   a known false positive kept in the golden set.
