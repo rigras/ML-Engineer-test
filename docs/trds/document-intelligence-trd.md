@@ -68,7 +68,7 @@ flowchart LR
     subgraph Domain [Domain — pure]
         D1[Name ↔ OCR-word alignment<br/>+ box merging / PDF-space geometry]
         D2[Name normalization<br/>+ fuzzy matching policy]
-        D3[Word-safe chunking]
+        D3[Block chunking<br/>+ BM25 ranking]
     end
     subgraph Ports
         P1[[PdfRasterizer]]
@@ -77,6 +77,7 @@ flowchart LR
         P4[[Embedder]]
         P5[[VectorStore]]
         P6[[AnswerGenerator]]
+        P7[[Reranker]]
     end
     subgraph Driven adapters
         A1[PyMuPDF]
@@ -85,20 +86,22 @@ flowchart LR
         A4[sentence-transformers]
         A5[Vector DB]
         A6[OpenAI-compatible LLM]
+        A7[Cross-encoder]
     end
     VIEW --> API --> UC1 & UC2 & UC3
     UC1 --> D1 & D2
-    UC2 --> D3
+    UC2 & UC3 --> D3
     UC1 & UC2 --> P1 & P2
     UC1 --> P3
     UC2 & UC3 --> P4 & P5
-    UC3 --> P6
+    UC3 --> P6 & P7
     P1 -.-> A1
     P2 -.-> A2
     P3 -.-> A3
     P4 -.-> A4
     P5 -.-> A5
     P6 -.-> A6
+    P7 -.-> A7
 ```
 
 **Flows.**
@@ -107,11 +110,15 @@ flowchart LR
   boxes in PDF points* → rebuild page text with a char-offset index per word → NER
   (PERSON only) per page → map each entity's char span back to its OCR words → merge
   into one box per occurrence → fuzzy-match unique names against the requested list.
-- **Ingest:** validate upload → rasterize + OCR (shared with Extract) → word-safe
-  chunking per page → embed batch → upsert into vector store with deterministic IDs.
-- **Ask:** validate body → embed question → retrieve top-k → relevance gate (no
-  relevant chunk ⇒ deterministic "not found" answer, no LLM call) → LLM answer
-  grounded in the retrieved chunks → `sources` built from retrieved-chunk metadata.
+- **Ingest:** validate upload → rasterize + OCR (shared with Extract) → pack OCR layout
+  blocks into ≤ 250-token, page-bounded, word-safe chunks
+  ([ADR-015](../adrs/ADR-015-ocr-block-chunking.md)) → embed batch → upsert into vector
+  store with deterministic IDs.
+- **Ask** ([ADR-014](../adrs/ADR-014-hybrid-retrieval-and-reranking.md)): validate body
+  → dense top-N ∪ BM25 top-N → cross-encoder rerank → top-k → relevance gate on the
+  rerank score (⇒ deterministic "not found", no LLM call) → LLM answer citing numbered
+  passages `[n]` → `sources` built by code from the cited chunks' metadata (invalid
+  citations dropped).
 
 **Pattern: deterministic workflow (prompt-chaining degenerate case: one LLM step).**
 Control flow lives in the application use cases; the LLM never decides what runs
@@ -127,15 +134,17 @@ next. Single service, no multi-agent — no capability needs open-ended planning
 | Composition root | Driving adapter | Build adapters once at startup (lifespan), inject into use cases via FastAPI dependencies | Settings → wired use cases |
 | `ExtractNames` | Application | Orchestrate OCR → NER → alignment → matching | PDF bytes + name list → extraction result |
 | `IngestDocument` | Application | Orchestrate OCR → chunk → embed → store | PDF bytes → chunks stored |
-| `AnswerQuestion` | Application | Retrieve → gate → generate → attach sources | question → answer + sources |
+| `AnswerQuestion` | Application | Hybrid retrieve → rerank → gate → generate → attach sources (ADR-014) | question → answer + sources |
 | Name alignment & geometry | Domain | Map entity char spans to OCR words; merge per-line boxes; px→pt conversion | words + spans → occurrences |
 | Name matching | Domain | Normalize (casefold, NFKD accent strip, honorific/punctuation strip) + full-string similarity ≥ threshold | names × requested names → matches |
-| Chunker | Domain | Split page text into ≤ N-char chunks on whitespace, with overlap, never mid-word | text → chunks |
+| Chunker | Domain | Pack OCR layout blocks into ≤ N-token, page-bounded chunks, no overlap, never mid-word (ADR-015) | OCR pages → chunks |
+| Lexical ranking | Domain | BM25 over the stored chunks (ADR-014) | question + chunks → ranking |
 | OCR adapter | Infrastructure | Rasterize + Tesseract `image_to_data`; return domain `Word`s in PDF points | PDF → pages of words |
 | NER adapter | Infrastructure | spaCy pipeline, PERSON label only | text → spans |
 | Embedding adapter | Infrastructure | Load model once; batch encode | texts → vectors |
 | Vector-store adapter | Infrastructure | Upsert / similarity search; translate client errors | chunks ↔ vectors |
 | LLM adapter | Infrastructure | OpenAI-compatible chat call with timeout + retries | prompt → text |
+| Reranker adapter | Infrastructure | sentence-transformers `CrossEncoder`, loaded once; scores (question, passage) pairs | pairs → scores |
 | Audit viewer | Driving adapter (static) | Render PDF, call `/api/extract`, overlay boxes | PDF + names → visual overlay |
 
 **Model classes.** Only one generative model: a *fast/small instruction model* is
@@ -193,7 +202,7 @@ independent) and no product learning loop beyond the offline golden set (§11).
   the contract is already Pydantic). CPU-bound endpoints are sync `def` so FastAPI runs
   them in its threadpool and the event loop stays free.
 - **Configuration:** one `Settings` object, environment-overridable (`DOCINTEL_*`),
-  covering DPI, OCR languages, model names, thresholds, chunk size/overlap, top-k,
+  covering DPI, OCR languages, model names, thresholds, chunk size, top-k,
   upload limits, vector-store mode/URL, LLM base URL/key/model/timeout/retries.
   `.env.example` documents every key. No literal hosts/ports/models/thresholds in code.
 - **Task queue / durable execution: N/A for the take-home** — requests are
@@ -201,7 +210,7 @@ independent) and no product learning loop beyond the offline golden set (§11).
   in `DESIGN.md`, not built.
 - **Deployment:** local `uv run uvicorn` with embedded vector store; bonus
   `docker compose up` with the app container plus an **isolated vector-DB service**
-  (and optional local LLM), healthchecks, non-root user, models baked into the image.
+  healthchecks, non-root user, models baked into the image.
 - **Tooling:** uv (PRD-mandated), ruff (lint + format), mypy (strict), import-linter
   (enforces the hexagonal dependency rule in CI), pytest + coverage.
 
@@ -236,12 +245,18 @@ independent) and no product learning loop beyond the offline golden set (§11).
 | Embeddings | **intfloat/multilingual-e5-small** | — | 384 d, ~470 MB, ES+EN, better retrieval than paraphrase-MiniLM; needs `query:`/`passage:` prefixes | CPU-only torch wheel via uv index | **Chosen** (ADR-009) |
 | Embeddings | BAAI/bge-m3 / Qwen3-Embedding-0.6B / EmbeddingGemma-300M | — | Higher quality | 1.5–2.2 GB or gated licence | Rejected — CPU latency/image size |
 | Embeddings runtime | sentence-transformers 6.2.0 (+ torch 2.14.1 CPU) vs fastembed 0.9.0 (ONNX) | — | ST is the PRD's suggestion; fastembed avoids torch | ST: GBs unless CPU index; fastembed: catalog unverified for e5-small | ST with CPU-only torch; fastembed is the S3 fallback |
-| LLM provider | **Groq** (free) | `https://api.groq.com/openai/v1` | OpenAI-compatible, very fast, no card | ~30 RPM / ~8 K TPM / ~1 K RPD on base plan (verify in console); data leaves the machine | **Default for live demo** (open question §16) |
-| LLM provider | **Ollama** (local) | `http://ollama:11434/v1` | OpenAI-compatible, private, compose-friendly, no limits | CPU: 3–4 B models ≈ tens of seconds/answer | **Compose profile / offline option** |
+| LLM provider | **Groq** (free) | `https://api.groq.com/openai/v1` | OpenAI-compatible, very fast, no card. Production models (2026-10-21): `llama-3.3-70b-versatile`, `llama-3.1-8b-instant`, `openai/gpt-oss-120b`, `openai/gpt-oss-20b` | ~30 RPM / ~8 K TPM / ~1 K RPD on the developer plan (verify per model in console); data leaves the machine | **Chosen — default** (owner decision 2026-10-21), model `llama-3.3-70b-versatile`: production, non-reasoning (no hidden reasoning tokens against the TPM budget), strong instruction following for citation rules |
+| LLM provider | **Ollama** (local) | `http://ollama:11434/v1` | OpenAI-compatible, private, compose-friendly, no limits | CPU: 3–4 B models ≈ tens of seconds/answer | Not shipped — reachable by config (`LLM_BASE_URL`) if needed |
 | LLM provider | OpenRouter `:free`, Gemini OpenAI endpoint, Cerebras | — | Compatible | 50 RPD cap / free-tier training on data / unclear terms | Rejected as default; usable via config |
 | LLM client | **openai SDK** | 3.x (verify pin) | `base_url`, `timeout`, `max_retries` with exponential backoff on 408/409/429/5xx built in | one dep | **Chosen** (ADR-010) |
 | LLM client | httpx 0.28.1 + tenacity 9.2.1 | — | Full control | Hand-roll `Retry-After`, error mapping | Rejected — constitution §8 prefers platform retries over hand-rolled |
-| Chunking | langchain-text-splitters 1.1.3 | — | Recursive splitter | Pulls `langchain-core` | Rejected — ~30 lines of tested domain code instead (ADR-011) |
+| Chunking | langchain-text-splitters 1.1.3 | — | Recursive splitter | Pulls `langchain-core` | Rejected — ~30 lines of tested domain code instead (ADR-011 → ADR-015) |
+| Lexical search | rank-bm25 / bm25s | — | BM25 index | New dep + in-memory index to keep in sync per worker | Rejected — hand-rolled BM25 per query over stored chunks (ADR-014) |
+| Lexical search | Chroma hybrid search | — | Native dense + sparse | Chroma Cloud only, not the embedded/local mode | Rejected |
+| Reranker | **`cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** | — | 118 M params, multilingual (matches the e5 embedder), loaded by sentence-transformers `CrossEncoder` (no new dep) | S6: 2.0 s / 20 pairs on CPU | **Chosen** (ADR-014, after S6) |
+| Reranker | `BAAI/bge-reranker-v2-m3` | — | 568 M params, multilingual, strongest | S6: 21 s / 20 pairs on CPU | Rejected on CPU — re-enable by config with a GPU |
+| Reranker | `BAAI/bge-reranker-base` | — | 278 M params, EN/ZH | S6: 6.2 s / 20 pairs on CPU | Rejected — too slow and not multilingual |
+| Reranker | `cross-encoder/ms-marco-MiniLM-L6-v2` | — | ~90 MB, fastest | English only | Rejected — blocks multi-language |
 
 ---
 
@@ -279,7 +294,7 @@ independent) and no product learning loop beyond the offline golden set (§11).
 | Vector store unreachable | Retries (bounded, backoff + jitter) → 503 (`vector_store_unavailable`) |
 | LLM not configured | `/ask` → 503 (`llm_not_configured`); `/health` reports it; extract/ingest unaffected |
 | LLM timeout / 5xx / 429 | Timeout + bounded retries with exponential backoff + jitter → 502/503 (`llm_unavailable`) |
-| No relevant chunk above similarity threshold | 200 with deterministic "not found in the ingested documents" and empty `sources`; no LLM call |
+| Best rerank score below the calibrated threshold (ADR-014) | 200 with deterministic "not found in the ingested documents" and empty `sources`; no LLM call |
 | Empty vector store | Same as above |
 
 - **HITL:** the audit viewer *is* the human-on-the-loop for extraction — the reviewer
@@ -303,8 +318,10 @@ independent) and no product learning loop beyond the offline golden set (§11).
   (Tesseract/spaCy/vector store) marked `integration`; one end-to-end test through the
   HTTP app on a sample PDF.
 - **Golden set (`tests/golden/`):** hand-labelled PERSON occurrences (name + page) for
-  the 5 sample pages, fuzzy-match pairs (accent/case/OCR-noise/negative), and ~8 Q&A
-  pairs with the expected source document.
+  the 5 sample pages, fuzzy-match pairs (accent/case/OCR-noise/negative), and ~12 Q&A
+  items: answerable ones with expected document + page and the expected fact,
+  unanswerable ones (must return "not found"), and one prompt-injection probe. The same
+  set calibrates the rerank gate (ADR-014).
 - **Evals:** NER precision/recall and occurrence recall vs. golden; box self-check
   (crop each returned box at high DPI, re-OCR, fuzzy ≥ 0.90 against the name); RAG
   retrieval hit@k; answer correctness by deterministic grader (expected fact present)
@@ -447,6 +464,8 @@ golden-set entry before the fix.
   `chromadb/chroma` service with a volume and healthcheck. Vectors are always computed
   by our `Embedder` and passed explicitly (Chroma's embedding function disabled).
   Writes use `upsert`. Client exceptions are translated to `VectorStoreUnavailable`.
+  *Dense-only retrieval superseded by [ADR-014](../adrs/ADR-014-hybrid-retrieval-and-reranking.md)
+  (hybrid + rerank); Chroma stays the store.*
 - **Consequences:** + isolation bonus with zero extra adapter code; local dev needs no
   Docker. − Chroma's heavy dependency tree and fast-moving API (pin the version;
   adapter contract tests catch breaks). Qdrant remains a one-adapter swap.
@@ -467,9 +486,10 @@ golden-set entry before the fix.
   needs timeouts and retries; owner has no OpenAI account.
 - **Options:** openai SDK; raw httpx + tenacity; provider-specific SDKs.
 - **Decision:** openai SDK with `base_url`, `api_key`, `model`, `timeout`,
-  `max_retries` from config; default target Groq free tier, Ollama as compose profile.
+  `max_retries` from config; default target Groq free tier; any other OpenAI-compatible endpoint by config.
   SDK errors translated at the adapter edge (`LlmUnavailable`, `LlmRateLimited`,
-  `LlmTimeout`). Temperature 0 for grounded answers.
+  `LlmTimeout`). Temperature 0 for grounded answers. *Provider confirmed 2026-10-21:
+  Groq, default model `llama-3.3-70b-versatile` (§8.2).*
 - **Consequences:** + built-in backoff respecting 429/5xx, works with every provider.
   − one more dependency; less control over jitter (acceptable; tenacity if needed).
 
@@ -481,6 +501,9 @@ golden-set entry before the fix.
   characters with `CHUNK_OVERLAP` trailing context → oversized sentence falls back to
   whitespace boundaries; a single token longer than the limit becomes its own chunk
   (never split). Each chunk carries `document_id`, file name, page, index.
+  *Packing rule and overlap superseded by
+  [ADR-015](../adrs/ADR-015-ocr-block-chunking.md) (pack OCR layout blocks up to a
+  token budget, no overlap); pure, word-safe, page-bounded domain code stands.*
 - **Consequences:** + pure, property-testable ("no chunk starts or ends mid-word",
   "concatenation covers the text"), page-level sources. − chunks never span pages
   (acceptable for short business docs).
@@ -497,7 +520,7 @@ architecture/practices).
 | P0 Foundation | Hexagonal skeleton, settings, JSON logging + request id, error hierarchy + HTTP mapping, upload validation, tooling (ruff, mypy, import-linter, pytest), `/health` | — | `validate` gate green; import-linter contract passes |
 | P1 Extraction | Rasterize + OCR adapter (PDF points), NER adapter, alignment/geometry domain, matching domain, `ExtractNames`, `/api/extract`, golden set + evals | P0, spike S1 | Thresholds in §1 met on `sample_pdfs`; e2e test green |
 | P2 RAG | Chunker, embedding + vector-store + LLM adapters, `IngestDocument`, `AnswerQuestion`, `/api/ingest`, `/api/ask`, RAG evals | P0, P1's OCR | Unique IDs across docs proven by test; retrieval hit@k 100 %; pass^3 ≥ 0.80 |
-| P3 Bonus | Dockerfile + `docker-compose.yml` (app + isolated vector DB [+ local LLM]), audit viewer | P1, P2 | `docker compose up` → `/health` ok; viewer overlays boxes on the 3 samples |
+| P3 Bonus | Dockerfile + `docker-compose.yml` (app + isolated vector DB), audit viewer | P1, P2 | `docker compose up` → `/health` ok; viewer overlays boxes on the 3 samples |
 | P4 Delivery | `DESIGN.md`, `DECISIONS.md` (incl. AI-use disclosure), PR | all | PR open, gate green |
 
 ---
@@ -509,8 +532,9 @@ architecture/practices).
 | S1 | spaCy `sm` misses or mislabels PERSONs on OCR text (e.g. "Dr. Yuki Tanaka", "Al-Rashidi", "O'Brien", ORGs like "NovaTech Solutions") | First task of P1: OCR the 5 sample pages, run `sm` and `trf`, score against the golden set; keep `sm` if ≥ 0.90 P/R, else adopt `trf` via new ADR. **Preliminary run (2026-10-21, `sm` on hand-transcribed sample text, not OCR output):** all 18 real persons in the excerpt found, honorifics excluded, ORG/GPE/PRODUCT/DATE correctly discarded; **one false positive: the codename `'Atlas'` tagged PERSON** — kept as a golden-set negative. **Result (2026-10-21, `scripts/eval_ner.py`, Tesseract OCR at 300 DPI, 55 golden occurrences):** `sm` P 0.912 / R 0.945 but leaks `Atlas` and `Forbes` (fails the zero-leak criterion of §1); `md` P 0.929 / R 0.945, leaks `Atlas`; **`lg` P 1.000 / R 0.982, no leaks → adopted ([ADR-013](../adrs/ADR-013-spacy-large-model-default.md))**. `trf` not needed (would add torch). |
 | S2 | OCR tokenization differs from NER tokenization (curly apostrophes, hyphens, trailing commas) → span-to-word mapping off by one | Covered by the offset-index design (ADR-004) + domain unit tests with these exact cases |
 | S3 | Docker image size (torch via sentence-transformers) | Measure in P3; CPU-only torch wheel or ONNX embedder if > ~2 GB |
-| S4 | Free LLM provider rate limits / availability during grading | LLM is configurable; deterministic "not found" path and clear 503 keep the rest of the service working; compose profile with a local model |
+| S4 | Free LLM provider rate limits / availability during grading | LLM is configurable; deterministic "not found" path and clear 503 keep the rest of the service working; any OpenAI-compatible endpoint by config |
 | S5 | Tesseract absent on the developer's Windows machine | Install via winget (verify ID with `winget search tesseract`) or develop/run integration tests in Docker |
+| S6 | `bge-reranker-v2-m3` too slow on CPU (20 pairs per question) | **Result (2026-10-21, dev box CPU, 20 pairs of ~300 tokens):** v2-m3 21.1 s, bge-base 6.2 s, mmarco-mMiniLMv2-L12 2.0 s, ms-marco-MiniLM-L6 0.7 s (English only — fails a Spanish question). **Default switched to `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** (ADR-014 amendment, RAG CR-001); `scripts/time_reranker.py` (T-004) reproduces it — there is always a reranker |
 
 ---
 
@@ -518,7 +542,7 @@ architecture/practices).
 
 | Question | Owner | Blocking |
 |---|---|---|
-| Which LLM provider to configure by default (free hosted key vs local model)? | Pablo | No (blocks only P2 `/ask` live demo) |
+| ~~Which LLM provider to configure by default?~~ **Resolved 2026-10-21: Groq, `llama-3.3-70b-versatile`** (ADR-010, §8.2) | Pablo | — |
 | Time budget for the submission (decides how much of P3 ships) | Pablo | No |
 | Do graders expect a top-left or bottom-left origin for boxes? (ADR-003 picks top-left and documents the flip) | Evaluator (unknown) | No |
 | Multi-language: ship Spanish NER enabled by default or opt-in via config? | Pablo | No |

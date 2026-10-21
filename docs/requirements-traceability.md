@@ -18,7 +18,7 @@ mechanical check. Keep this table current; a requirement without a check is a ga
 | OCR every page incl. first | TRD §1, §2 (Extract flow) | `tests/unit/application/test_ocr_all_pages.py`; `tests/integration/test_tesseract_ocr.py`; `tests/e2e/test_extract_samples.py` (both pages of 2-page samples) |
 | Boxes in PDF space, not pixels | TRD ADR-003 | `tests/unit/domain/test_geometry.py` (px→pt); DPI-independence in `test_tesseract_ocr.py`; e2e boxes within 612×792; `scripts/eval_boxes.py` (100 % re-OCR) |
 | Case/accent-insensitive, OCR-noise-robust, full-string matching | TRD ADR-005 | `tests/unit/domain/test_name_matching.py` on `tests/golden/name_pairs.json` (19 pairs, 0.90 and 0.80) |
-| Chunking never cuts words | TRD ADR-011 | Property test on the chunker |
+| Chunking never cuts words | TRD ADR-011, ADR-015 | Property test on the chunker |
 | Grounded answers; no hallucinated `sources` | TRD ADR-006 | Use-case test: sources ⊆ retrieved chunk metadata |
 | Vector IDs unique across documents | TRD ADR-007 | Test: ingest A, ingest B, both retrievable |
 | Tests: tricky logic (mock heavy models) + ≥1 e2e | CONSTITUTION §7 | `pytest -m "not integration"` (fakes = the "mocks" the README asks for); `tests/e2e/test_extract_samples.py`; NER eval `scripts/eval_ner.py` |
