@@ -365,6 +365,12 @@ TDD on every task: write the test, see it fail, implement, see it pass.
 - **IMPLEMENT**: `locate_occurrences(page, page_text, spans) -> list[NameOccurrence]`: for each span, indexes `i` with `word_spans[i]` overlapping `[start,end)` (`ws < end and we > start`); none → log `alignment_span_unmatched` (page index, start, end) and skip; group selected words by `line_key` preserving order; one `NameOccurrence(span.text, page.index, union_box(group boxes))` per group. Final sort: `(page_index, box.y, box.x)`.
 - **TESTS** `tests/unit/domain/test_alignment.py`: T-005 AC2 (`From: Margaret Thompson, CEO`), AC3 (3× Richard Hernandez on 3 lines → 3 boxes top-to-bottom), AC4 (wrap → 2 occurrences, heights ≤ line height), AC5 (boxes are exact unions, inside page), unmatched span skipped + logged (caplog, no name in record).
 - **VALIDATE**: `uv run pytest tests/unit/domain -q`
+- **Amendment (T-005 execution):** occurrences are ordered by their offset in the page
+  text (reading order — T-005 "position in the page text") instead of `(box.y, box.x)`,
+  which could reorder two names on the same line whose word tops differ by a point. The
+  occurrence name is the span text with whitespace collapsed (`"David
+Nakamura"` →
+  `"David Nakamura"` for a wrapped name).
 - **GATE + COMMIT** `feat(T-005): char-offset alignment of names to OCR word boxes`
 
 ### ═══ T-006 `/api/extract` end to end ═══
