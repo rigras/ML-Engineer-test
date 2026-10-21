@@ -17,6 +17,7 @@ from app.api.health import router as health_router
 from app.api.middleware import RequestIdMiddleware
 from app.api.rag import router as rag_router
 from app.api.upload import UploadLimits
+from app.api.viewer import router as viewer_router
 from app.application.answer_question import AnswerQuestion
 from app.application.extract_names import ExtractNames
 from app.application.ingest_document import IngestDocument
@@ -117,6 +118,7 @@ def create_app(
     app.include_router(health_router, tags=["health"])
     app.include_router(extract_router, prefix="/api", tags=["extraction"])
     app.include_router(rag_router, prefix="/api", tags=["rag"])
+    app.include_router(viewer_router)
     return app
 
 

@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Audit Viewer</title>
+<!-- pdf.js renders the PDF pages; boxes from /api/extract are drawn over them. -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"
+        integrity="sha384-/1qUCSGwTur9vjf/z9lmu/eCUYbpOTgSjmpbMQZ1/CtX2v/WcAIKqRv+U1DUCG6e"
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
+<style>
+  :root {
+    --bg: #f6f7f9; --panel: #ffffff; --text: #1d2330; --muted: #5d6677; --line: #dde1e8;
+    --accent: #2457d6; --match: #15803d; --person: #c2410c; --error: #b91c1c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151b; --panel: #1b1f27; --text: #e6e9ef; --muted: #9aa3b2; --line: #2c323d;
+      --accent: #7aa2ff; --match: #4ade80; --person: #fb923c; --error: #f87171;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { padding: 16px; border-bottom: 1px solid var(--line); background: var(--panel); }
+  header h1 { margin: 0; font-size: 18px; }
+  header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  nav { display: flex; gap: 4px; margin-top: 12px; }
+  nav button { border: 1px solid var(--line); background: transparent; color: var(--text);
+               padding: 6px 14px; border-radius: 6px; cursor: pointer; font: inherit; }
+  nav button[aria-selected="true"] { background: var(--accent); border-color: var(--accent);
+                                     color: #fff; }
+  main { padding: 16px; max-width: 1400px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+           padding: 16px; margin-bottom: 16px; }
+  label { display: block; font-weight: 600; margin: 8px 0 4px; }
+  .hint { color: var(--muted); font-size: 13px; font-weight: normal; }
+  textarea, input[type=text] { width: 100%; padding: 8px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  textarea { min-height: 72px; font-family: ui-monospace, monospace; font-size: 13px; }
+  .actions { display: flex; gap: 12px; align-items: center; margin-top: 12px; flex-wrap: wrap; }
+  .primary { background: var(--accent); color: #fff; border: 0; padding: 8px 18px;
+             border-radius: 6px; cursor: pointer; font: inherit; font-weight: 600; }
+  .primary:disabled { opacity: .5; cursor: wait; }
+  .status { color: var(--muted); font-size: 13px; }
+  .status.error { color: var(--error); }
+  .layout { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; }
+  @media (max-width: 900px) { .layout { grid-template-columns: minmax(0, 1fr); } }
+  .page { position: relative; margin: 0 auto 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2);
+          background: #fff; }
+  .page canvas { display: block; width: 100%; height: auto; }
+  .page-label { color: var(--muted); font-size: 12px; margin: 0 0 4px; }
+  .box { position: absolute; border: 2px solid var(--person);
+         background: color-mix(in srgb, var(--person) 15%, transparent); cursor: pointer; }
+  .box.match { border-color: var(--match);
+               background: color-mix(in srgb, var(--match) 18%, transparent); }
+  .box.flash { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .legend { display: flex; gap: 14px; font-size: 13px; color: var(--muted); }
+  .swatch { display: inline-block; width: 12px; height: 12px; border: 2px solid;
+            vertical-align: -2px; margin-right: 4px; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { text-align: left; padding: 6px 4px; border-bottom: 1px solid var(--line); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--bg); }
+  .score { font-variant-numeric: tabular-nums; }
+  .answer { white-space: pre-wrap; padding: 12px; border-left: 3px solid var(--accent);
+            background: var(--bg); border-radius: 4px; }
+  ul.sources { margin: 8px 0 0; padding-left: 20px; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Audit viewer</h1>
+  <p>Check that every name the API returns sits where it says on the page, and try the RAG endpoints.</p>
+  <nav role="tablist">
+    <button role="tab" aria-selected="true" data-tab="extract">Extract names</button>
+    <button role="tab" aria-selected="false" data-tab="rag">Ask the documents</button>
+  </nav>
+</header>
+
+<main>
+  <section id="tab-extract">
+    <div class="panel">
+      <label for="extract-file">Scanned PDF</label>
+      <input id="extract-file" type="file" accept="application/pdf,.pdf">
+      <label for="names">People to check <span class="hint">— one per line: <code>first names | last names</code> (optional)</span></label>
+      <textarea id="names" placeholder="Robert | Chen&#10;María | González"></textarea>
+      <div class="actions">
+        <button id="extract-run" class="primary">Extract</button>
+        <span id="extract-status" class="status" role="status"></span>
+      </div>
+    </div>
+
+    <div class="layout" id="extract-result" hidden>
+      <div id="pages"></div>
+      <aside class="panel">
+        <div class="legend">
+          <span><span class="swatch" style="border-color:var(--match)"></span>Matches your list</span>
+          <span><span class="swatch" style="border-color:var(--person)"></span>Other person</span>
+        </div>
+        <table>
+          <thead><tr><th>Name</th><th>Page</th><th>Match</th></tr></thead>
+          <tbody id="names-table"></tbody>
+        </table>
+        <p class="hint">Pages shown 1-based; the API's <code>page_number</code> is 0-based.
+          Boxes are in PDF points (top-left origin), scaled to the rendered page.</p>
+      </aside>
+    </div>
+  </section>
+
+  <section id="tab-rag" hidden>
+    <div class="panel">
+      <label for="ingest-file">1 · Ingest a PDF</label>
+      <input id="ingest-file" type="file" accept="application/pdf,.pdf">
+      <div class="actions">
+        <button id="ingest-run" class="primary">Ingest</button>
+        <span id="ingest-status" class="status" role="status"></span>
+      </div>
+    </div>
+    <div class="panel">
+      <label for="question">2 · Ask a question</label>
+      <input id="question" type="text" maxlength="2000"
+             placeholder="Who leads the Computational Biology Division?">
+      <div class="actions">
+        <button id="ask-run" class="primary">Ask</button>
+        <span id="ask-status" class="status" role="status"></span>
+      </div>
+      <div id="ask-result" hidden>
+        <label>Answer</label>
+        <div id="answer" class="answer"></div>
+        <label>Sources <span class="hint">— built by the server from the passages the answer cites (pages 0-based)</span></label>
+        <ul id="sources" class="sources"></ul>
+      </div>
+    </div>
+  </section>
+</main>
+
+<script>
+"use strict";
+pdfjsLib.GlobalWorkerOptions.workerSrc =
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+
+const $ = (id) => document.getElementById(id);
+
+// Tabs
+document.querySelectorAll("nav button").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll("nav button").forEach((t) => {
+      const selected = t === tab;
+      t.setAttribute("aria-selected", String(selected));
+      $("tab-" + t.dataset.tab).hidden = !selected;
+    });
+  });
+});
+
+function setStatus(el, text, isError = false) {
+  el.textContent = text;
+  el.classList.toggle("error", isError);
+}
+
+// Calls the API; on failure throws the server's error code and message.
+async function callApi(url, options) {
+  const response = await fetch(url, options);
+  const body = await response.json().catch(() => null);
+  if (!response.ok) {
+    const error = body && body.error;
+    throw new Error(error ? `${error.code}: ${error.message}` : `HTTP ${response.status}`);
+  }
+  return body;
+}
+
+// "Robert | Chen" → {first_name, last_name}; without "|", the last word is the last name.
+function parseNames(text) {
+  return text.split("\n").map((line) => line.trim()).filter(Boolean).map((line) => {
+    let first, last;
+    if (line.includes("|")) {
+      [first, last] = line.split("|", 2).map((part) => part.trim());
+    } else {
+      const words = line.split(/\s+/);
+      last = words.pop();
+      first = words.join(" ");
+    }
+    if (!first || !last) throw new Error(`Cannot read a first and last name from "${line}"`);
+    return { first_name: first, last_name: last };
+  });
+}
+
+// ---- Extract ----------------------------------------------------------------------
+$("extract-run").addEventListener("click", async () => {
+  const file = $("extract-file").files[0];
+  const status = $("extract-status");
+  if (!file) return setStatus(status, "Choose a PDF first.", true);
+  let names;
+  try { names = parseNames($("names").value); }
+  catch (e) { return setStatus(status, e.message, true); }
+
+  const button = $("extract-run");
+  button.disabled = true;
+  setStatus(status, "Running OCR and name recognition… (a few seconds per page)");
+  try {
+    const form = new FormData();
+    form.append("pdf_file", file);
+    form.append("names", JSON.stringify(names));
+    const started = performance.now();
+    const result = await callApi("/api/extract", { method: "POST", body: form });
+    const seconds = ((performance.now() - started) / 1000).toFixed(1);
+    await render(file, result);
+    setStatus(status, `${result.extracted_names.length} name occurrence(s), ` +
+                      `${result.fuzzy_matches.length} match(es) in ${seconds} s.`);
+  } catch (e) {
+    setStatus(status, e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+async function render(file, result) {
+  const pdf = await pdfjsLib.getDocument({ data: await file.arrayBuffer() }).promise;
+  const container = $("pages");
+  container.replaceChildren();
+  $("extract-result").hidden = false;
+
+  // Best match score per extracted name.
+  const bestMatch = new Map();
+  for (const m of result.fuzzy_matches) {
+    const current = bestMatch.get(m.extracted_name);
+    if (!current || m.score > current.score) bestMatch.set(m.extracted_name, m);
+  }
+
+  const width = Math.min(container.clientWidth || 800, 1000);
+  const pageBoxes = [];  // per page: {element, scale}
+  for (let index = 0; index < pdf.numPages; index++) {
+    const page = await pdf.getPage(index + 1);
+    const scale = width / page.getViewport({ scale: 1 }).width;  // CSS px per PDF point
+    const viewport = page.getViewport({ scale: scale * window.devicePixelRatio });
+    const canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    await page.render({ canvasContext: canvas.getContext("2d"), viewport }).promise;
+
+    const label = document.createElement("p");
+    label.className = "page-label";
+    label.textContent = `Page ${index + 1} of ${pdf.numPages} (page_number ${index})`;
+    const wrapper = document.createElement("div");
+    wrapper.className = "page";
+    wrapper.style.width = width + "px";
+    wrapper.append(canvas);
+    container.append(label, wrapper);
+    pageBoxes.push({ element: wrapper, scale });
+  }
+
+  const table = $("names-table");
+  table.replaceChildren();
+  result.extracted_names.forEach((item) => {
+    const { page_number, x, y, width: w, height: h } = item.bounding_box;
+    const target = pageBoxes[page_number];
+    if (!target) return;
+    const match = bestMatch.get(item.name);
+
+    // Points → CSS pixels: same top-left origin, so only a scale.
+    const box = document.createElement("div");
+    box.className = "box" + (match ? " match" : "");
+    Object.assign(box.style, {
+      left: x * target.scale + "px", top: y * target.scale + "px",
+      width: w * target.scale + "px", height: h * target.scale + "px",
+    });
+    box.title = match
+      ? `${item.name} ≈ ${match.matched_name} (${Math.round(match.score * 100)} %)`
+      : item.name;
+    target.element.append(box);
+
+    const row = document.createElement("tr");
+    const cells = [item.name, String(page_number + 1),
+                   match ? `${Math.round(match.score * 100)} % · ${match.matched_name}` : "—"];
+    cells.forEach((text, i) => {
+      const cell = document.createElement("td");
+      cell.textContent = text;
+      if (i === 2) cell.className = "score";
+      row.append(cell);
+    });
+    row.addEventListener("click", () => {
+      box.scrollIntoView({ behavior: "smooth", block: "center" });
+      box.classList.add("flash");
+      setTimeout(() => box.classList.remove("flash"), 1500);
+    });
+    table.append(row);
+  });
+}
+
+// ---- RAG --------------------------------------------------------------------------
+$("ingest-run").addEventListener("click", async () => {
+  const file = $("ingest-file").files[0];
+  const status = $("ingest-status");
+  if (!file) return setStatus(status, "Choose a PDF first.", true);
+  const button = $("ingest-run");
+  button.disabled = true;
+  setStatus(status, "OCR, chunking and embedding…");
+  try {
+    const form = new FormData();
+    form.append("pdf_file", file);
+    const result = await callApi("/api/ingest", { method: "POST", body: form });
+    setStatus(status, `${file.name}: ${result.status}, ${result.chunks_stored} chunk(s) stored.`);
+  } catch (e) {
+    setStatus(status, e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+});
+
+async function ask() {
+  const question = $("question").value.trim();
+  const status = $("ask-status");
+  if (!question) return setStatus(status, "Write a question first.", true);
+  const button = $("ask-run");
+  button.disabled = true;
+  setStatus(status, "Retrieving passages and asking the LLM…");
+  try {
+    const result = await callApi("/api/ask", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question }),
+    });
+    // Rendered as plain text, never HTML: the answer comes from an LLM.
+    $("answer").textContent = result.answer;
+    const sources = $("sources");
+    sources.replaceChildren(...(result.sources.length ? result.sources : ["(none)"]).map((s) => {
+      const li = document.createElement("li");
+      li.textContent = s;
+      return li;
+    }));
+    $("ask-result").hidden = false;
+    setStatus(status, "");
+  } catch (e) {
+    setStatus(status, e.message, true);
+  } finally {
+    button.disabled = false;
+  }
+}
+$("ask-run").addEventListener("click", ask);
+$("question").addEventListener("keydown", (e) => { if (e.key === "Enter") ask(); });
+</script>
+</body>
+</html>
