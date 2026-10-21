@@ -2,6 +2,8 @@ import json
 from collections import Counter
 from pathlib import Path
 
+from tests.conftest import SAMPLE_PAGE_COUNTS
+
 GOLDEN = json.loads(
     (Path(__file__).parents[1] / "golden" / "persons.json").read_text(encoding="utf-8")
 )
@@ -47,3 +49,26 @@ def test_no_negative_is_also_a_person() -> None:
     persons = {name for page in GOLDEN["pages"] for name in page["persons"]}
 
     assert persons.isdisjoint(GOLDEN["negatives"])
+
+
+QUESTIONS = json.loads(
+    (Path(__file__).parents[1] / "golden" / "questions.json").read_text(encoding="utf-8")
+)["questions"]
+
+
+def test_golden_questions_have_unique_ids_and_known_kinds() -> None:
+    ids = [q["id"] for q in QUESTIONS]
+
+    assert len(ids) == len(set(ids))
+    assert {q["kind"] for q in QUESTIONS} == {"answerable", "unanswerable", "injection"}
+    assert sum(q["kind"] == "unanswerable" for q in QUESTIONS) >= 2
+    assert sum(q["kind"] == "injection" for q in QUESTIONS) == 1
+
+
+def test_golden_answers_point_at_existing_sample_pages() -> None:
+    for question in (q for q in QUESTIONS if q["kind"] == "answerable"):
+        assert question["fact"].strip()
+        assert question["expected_sources"]
+        for source in question["expected_sources"]:
+            file_name, page = source.rsplit(", page ", 1)
+            assert 0 <= int(page) < SAMPLE_PAGE_COUNTS[file_name], source

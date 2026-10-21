@@ -141,3 +141,16 @@ def _letter_vector(text: str) -> list[float]:
 
 def _cosine(a: Sequence[float], b: Sequence[float]) -> float:
     return sum(x * y for x, y in zip(a, b, strict=True))
+
+
+class FakeReranker:
+    """Scores each text from a script (unknown texts score ``default``); records calls."""
+
+    def __init__(self, scores: Mapping[str, float] | None = None, default: float = 0.0) -> None:
+        self.scores = dict(scores or {})
+        self.default = default
+        self.calls: list[list[str]] = []
+
+    def score(self, question: str, texts: Sequence[str]) -> list[float]:
+        self.calls.append(list(texts))
+        return [self.scores.get(text, self.default) for text in texts]

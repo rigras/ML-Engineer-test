@@ -47,6 +47,10 @@ class Settings(BaseSettings):
     vector_store_collection: str = Field(default="chunks", min_length=3)  # Chroma's minimum
     # Multilingual cross-encoder chosen by spike S6 on CPU (ADR-014).
     reranker_model: str = Field(default="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1", min_length=1)
+    retrieval_candidates: int = Field(default=10, gt=0)  # per search: dense and BM25 each
+    top_k: int = Field(default=5, gt=0)  # chunks sent to the LLM
+    # Relevance gate on the reranker's raw score, calibrated by scripts/eval_retrieval.py.
+    rerank_min_score: float = -2.59
 
 
 def load_settings(env_file: str | None = DEFAULT_ENV_FILE) -> Settings:

@@ -46,7 +46,11 @@ Option 3. Every number is in `Settings`:
    `Reranker` port; keep the best `TOP_K` (default 5), best first.
 4. **Relevance gate:** best rerank score below `RERANK_MIN_SCORE` ⇒ deterministic "not
    found in the ingested documents", no LLM call. The threshold is calibrated on the RAG
-   golden set (answerable vs unanswerable questions).
+   golden set (answerable vs unanswerable questions). *Calibrated 2026-10-21
+   (`scripts/eval_retrieval.py`, mmarco, 13 golden questions):* unanswerable top scores
+   ≤ −4.49, answerable ≥ −0.70 (the NSF-grant figure question) → **`RERANK_MIN_SCORE =
+   −2.59`** (midpoint). hit@5 10/10 and hit@1 10/10 — but the 3 samples yield only 5
+   chunks, so top-5 holds everything; hit@1 is the meaningful number here.
 
 **Reranker model: `cross-encoder/mmarco-mMiniLMv2-L12-H384-v1`** — multilingual like
 our embedder (ADR-009), loaded with sentence-transformers' `CrossEncoder`
