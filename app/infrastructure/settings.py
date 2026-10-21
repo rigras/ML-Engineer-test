@@ -36,7 +36,7 @@ class Settings(BaseSettings):
     ocr_confidence_floor: float = Field(default=30.0, ge=0.0, le=100.0)
     ocr_timeout_seconds: float = Field(default=60.0, gt=0.0)
     tesseract_cmd: str | None = None
-    ner_model: str = Field(default="en_core_web_sm", min_length=1)
+    ner_model: str = Field(default="en_core_web_lg", min_length=1)  # ADR-013
     fuzzy_threshold: float = Field(default=0.90, ge=0.0, le=1.0)
 
 

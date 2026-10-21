@@ -11,7 +11,7 @@ def test_defaults_load() -> None:
     assert settings.fuzzy_threshold == 0.90
     assert settings.max_upload_bytes == 20 * 1024 * 1024
     assert settings.max_pages == 50
-    assert settings.ner_model == "en_core_web_sm"
+    assert settings.ner_model == "en_core_web_lg"
     assert settings.tesseract_cmd is None
 
 

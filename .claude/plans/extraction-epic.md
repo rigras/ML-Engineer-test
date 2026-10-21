@@ -353,6 +353,10 @@ TDD on every task: write the test, see it fail, implement, see it pass.
 - **TESTS** `tests/integration/test_spacy_recognizer.py` — T-004 AC1, AC2 (offsets slice exactly), unknown model → `NerModelUnavailable`. `tests/unit/test_golden_set.py` — AC3: 5 pages present, 55 occurrences, negatives listed.
 - **S1**: run `uv run python scripts/eval_ner.py`; if it fails with `sm`, `uv add` the `en_core_web_trf` wheel **only after writing ADR-013** and rerun with `--model en_core_web_trf`. If neither passes → stop and report (ticket alt-flow: record open question in TRD §16, do not proceed to T-006 silently). Write numbers + date + decision into TRD §15 S1.
 - **VALIDATE**: `uv run python scripts/eval_ner.py` exits 0.
+- **Amendment (S1 result, 2026-10-21):** `sm` met P/R (0.912/0.945) but leaked `Atlas` and
+  `Forbes`, failing TRD §1's zero-leak criterion. `md` (0.929/0.945) leaked `Atlas`. `lg`
+  passed (1.000/0.982, no leaks) without torch, so it was adopted via **ADR-013** instead
+  of `trf`; `ner_model` default is now `en_core_web_lg` and its wheel replaces `sm`.
 - **GATE + COMMIT** `feat(T-004): spaCy PERSON recognizer, golden set and NER eval (S1)`
 
 ### ═══ T-005 Locate occurrences ═══

@@ -218,7 +218,7 @@ independent) and no product learning loop beyond the offline golden set (§11).
 | Raster | **PyMuPDF** | 2.0 | Self-contained wheel, page rect in points, handles rotation/CropBox | **AGPL-3.0** | **Chosen** (ADR-003) |
 | Raster | pypdfium2 | 5.14.0 | Same capability | BSD/Apache | Fallback if AGPL is a problem |
 | Raster | pdf2image | 1.17.0 | Needs poppler, no point-space metadata | stale | Rejected |
-| NER | **spaCy `en_core_web_sm`** (+ `es_core_news_sm` for Spanish) | 3.8.0 | Fast CPU, small, PERSON/PER labels | ~12 MB each, pip wheels pinned by URL | **Chosen** (ADR-004), validated by spike S1 |
+| NER | **spaCy `en_core_web_lg`** (+ `es_core_news_sm` for Spanish) | 3.8.0 | CPU, PERSON/PER labels, no torch | ~425 MB, pip wheel pinned by URL | **Chosen** (ADR-004 + ADR-013: `sm` failed spike S1) |
 | NER | `en_core_web_trf` | 3.8.0 | Better accuracy | ~440 MB + torch | Upgrade path if S1 misses the recall threshold |
 | NER | GLiNER | 0.2.29 | Zero-shot, multilingual | torch, slower | Rejected for now |
 | Fuzzy | **rapidfuzz** | 3.14.6 | `fuzz.ratio` full-string, MIT, C++ | none | **Chosen** (ADR-005) |
@@ -397,6 +397,8 @@ golden-set entry before the fix.
   NER per page, map entity char spans directly to the words they cover; (c) a
   layout-aware model (LayoutLM) predicting labels per word box.
 - **Decision:** (b) with spaCy `en_core_web_sm` (Spanish model optional via config).
+  *Model choice superseded by ADR-013 (`en_core_web_lg`) after spike S1; the alignment
+  design stands.*
   Honorifics (`Dr.`, `Prof.`, …) are excluded from the name and the box. A name that
   wraps across lines yields one box per line segment.
 - **Consequences:** + exact, one box per real occurrence, repeated names handled, no
@@ -504,7 +506,7 @@ architecture/practices).
 
 | # | Risk | Spike / validation |
 |---|---|---|
-| S1 | spaCy `sm` misses or mislabels PERSONs on OCR text (e.g. "Dr. Yuki Tanaka", "Al-Rashidi", "O'Brien", ORGs like "NovaTech Solutions") | First task of P1: OCR the 5 sample pages, run `sm` and `trf`, score against the golden set; keep `sm` if ≥ 0.90 P/R, else adopt `trf` via new ADR. **Preliminary run (2026-10-21, `sm` on hand-transcribed sample text, not OCR output):** all 18 real persons in the excerpt found, honorifics excluded, ORG/GPE/PRODUCT/DATE correctly discarded; **one false positive: the codename `'Atlas'` tagged PERSON** — kept as a golden-set negative |
+| S1 | spaCy `sm` misses or mislabels PERSONs on OCR text (e.g. "Dr. Yuki Tanaka", "Al-Rashidi", "O'Brien", ORGs like "NovaTech Solutions") | First task of P1: OCR the 5 sample pages, run `sm` and `trf`, score against the golden set; keep `sm` if ≥ 0.90 P/R, else adopt `trf` via new ADR. **Preliminary run (2026-10-21, `sm` on hand-transcribed sample text, not OCR output):** all 18 real persons in the excerpt found, honorifics excluded, ORG/GPE/PRODUCT/DATE correctly discarded; **one false positive: the codename `'Atlas'` tagged PERSON** — kept as a golden-set negative. **Result (2026-10-21, `scripts/eval_ner.py`, Tesseract OCR at 300 DPI, 55 golden occurrences):** `sm` P 0.912 / R 0.945 but leaks `Atlas` and `Forbes` (fails the zero-leak criterion of §1); `md` P 0.929 / R 0.945, leaks `Atlas`; **`lg` P 1.000 / R 0.982, no leaks → adopted ([ADR-013](../adrs/ADR-013-spacy-large-model-default.md))**. `trf` not needed (would add torch). |
 | S2 | OCR tokenization differs from NER tokenization (curly apostrophes, hyphens, trailing commas) → span-to-word mapping off by one | Covered by the offset-index design (ADR-004) + domain unit tests with these exact cases |
 | S3 | Docker image size (torch via sentence-transformers) | Measure in P3; CPU-only torch wheel or ONNX embedder if > ~2 GB |
 | S4 | Free LLM provider rate limits / availability during grading | LLM is configurable; deterministic "not found" path and clear 503 keep the rest of the service working; compose profile with a local model |

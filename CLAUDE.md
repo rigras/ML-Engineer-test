@@ -109,8 +109,8 @@ honorifics excluded.
   mangles them — set `PYTHONIOENCODING=utf-8` when printing. Same fix when piping
   `lint-imports` output (its spinner emoji crashes cp1252 with `UnicodeEncodeError`).
 - The repo lives under a OneDrive path with spaces — quote paths in shell commands.
-- spaCy `en_core_web_sm` tags the codename `'Atlas'` (company_memo.pdf) as PERSON —
-  a known false positive kept in the golden set.
+- NER default is `en_core_web_lg` (ADR-013): `sm` leaked `'Atlas'`/`Forbes` as PERSON on
+  the OCR text. Re-run `scripts/eval_ner.py --model <name>` before changing it.
 - Deliberate deviation from guati-factory `/create-rules`: no `.claude/context/`
   modules — they only duplicated the TRD/CONSTITUTION and aren't auto-loaded; this
   file points to the source sections instead.
