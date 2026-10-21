@@ -1,6 +1,6 @@
-# README requirement → rule → verification (load before planning a ticket or opening the PR)
+# Requirements traceability — README requirement → rule → verification
 
-Every graded requirement in README §"Requirements that matter" must map to a rule and a
+Every graded requirement in README §"Requirements that matter" maps to a rule and a
 mechanical check. Keep this table current; a requirement without a check is a gap.
 
 | README requirement | Rule | Verified by |
@@ -15,9 +15,9 @@ mechanical check. Keep this table current; a requirement without a check is a ga
 | Reject non-PDF by content, empty, oversized; validate bodies | CONSTITUTION §8 (Validate at the edge) | API tests: renamed `.txt` as `.pdf`, empty file, oversize, bad `names` JSON |
 | No leaked file handles / temp files | CONSTITUTION §8 (Resources are scoped) | Test asserting temp dir empty after success **and** after failure |
 | Structured logging with context | CONSTITUTION §9 | Test capturing a log record: JSON, `event`, `request_id`, no names |
-| OCR every page incl. first | extraction-pipeline.md | Unit test with fake rasterizer of N pages; e2e on 2-page samples |
-| Boxes in PDF space, not pixels | extraction-pipeline.md, TRD ADR-003 | Geometry unit test (px→pt); e2e: boxes within 612×792 |
-| Case/accent-insensitive, OCR-noise-robust, full-string matching | extraction-pipeline.md, TRD ADR-005 | Golden pairs unit tests (`María González`~`Maria Gonzalez`, `Ana` ≁ `Ana María Rodríguez`) |
+| OCR every page incl. first | TRD §1, §2 (Extract flow) | Unit test with fake rasterizer of N pages; e2e on 2-page samples |
+| Boxes in PDF space, not pixels | TRD ADR-003 | Geometry unit test (px→pt); e2e: boxes within 612×792 |
+| Case/accent-insensitive, OCR-noise-robust, full-string matching | TRD ADR-005 | Golden pairs unit tests (`María González`~`Maria Gonzalez`, `Ana` ≁ `Ana María Rodríguez`) |
 | Chunking never cuts words | TRD ADR-011 | Property test on the chunker |
 | Grounded answers; no hallucinated `sources` | TRD ADR-006 | Use-case test: sources ⊆ retrieved chunk metadata |
 | Vector IDs unique across documents | TRD ADR-007 | Test: ingest A, ingest B, both retrievable |

@@ -53,14 +53,36 @@ uv run pytest                        # full suite (needs Tesseract installed)
 uv run uvicorn app.main:app --reload # run locally
 ```
 
-## On-demand context
+## Layout
 
-| Module | Load when |
+```
+app/
+  main.py              # app factory + lifespan = composition root (only place adapters are built)
+  models/schemas.py    # FIXED HTTP contract (Pydantic) — do not reshape
+  api/                 # driving adapter: routers, upload validation, error→status map, DI providers
+  application/         # ports.py (Protocols) + use cases (plain classes)
+  domain/              # pure: dataclasses, alignment & geometry, matching, chunking, errors
+  infrastructure/      # one adapter per port + Settings + logging setup
+tests/
+  unit/ (domain, application, api — fakes, no Tesseract needed)
+  integration/ (real engines, @pytest.mark.integration)   e2e/   golden/   fakes/
+```
+
+## Where to look (no duplication — read the source section)
+
+| When you are… | Read |
 |---|---|
-| `.claude/context/architecture.md` | Creating/moving modules, adding a port or adapter, wiring DI |
-| `.claude/context/extraction-pipeline.md` | Touching OCR, NER, bounding boxes, coordinates, or fuzzy matching |
-| `.claude/context/testing.md` | Writing tests, fakes, golden sets or evals |
-| `.claude/context/requirements-traceability.md` | Planning a ticket, reviewing, or before opening the PR |
+| Adding a port/adapter, wiring DI | CONSTITUTION §1, §2.1, §4 |
+| Touching OCR, NER, boxes, coordinates | TRD §2 (Extract flow), ADR-002, ADR-003, ADR-004 |
+| Touching fuzzy matching | TRD ADR-005 |
+| Touching ingest/ask | TRD ADR-006…ADR-011 |
+| Writing tests or evals | CONSTITUTION §7, TRD §1 (thresholds), §11 |
+| Planning a ticket, reviewing, opening the PR | `docs/requirements-traceability.md` |
+
+Graded extraction invariants (README §Correctness): every page OCR'd incl. page 0 ·
+0-based pages · boxes in PDF points, top-left origin (`pt = px × 72 / DPI`, converted
+once in the OCR adapter) · PERSON label only · one box per real occurrence ·
+honorifics excluded.
 
 ## Hard rules
 
@@ -88,3 +110,6 @@ uv run uvicorn app.main:app --reload # run locally
 - The repo lives under a OneDrive path with spaces — quote paths in shell commands.
 - spaCy `en_core_web_sm` tags the codename `'Atlas'` (company_memo.pdf) as PERSON —
   a known false positive kept in the golden set.
+- Deliberate deviation from guati-factory `/create-rules`: no `.claude/context/`
+  modules — they only duplicated the TRD/CONSTITUTION and aren't auto-loaded; this
+  file points to the source sections instead.
