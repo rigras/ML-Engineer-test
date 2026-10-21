@@ -67,6 +67,12 @@ plugins = ["pydantic.mypy"]
 module = ["pytesseract", "pytesseract.*", "spacy", "spacy.*"]
 ignore_missing_imports = true
 
+# PyMuPDF ships partially annotated functions (`open`, `Document.close`); allow calling
+# them from its adapter only — the rest of `app` stays fully strict.
+[[tool.mypy.overrides]]
+module = ["app.infrastructure.pymupdf_rasterizer"]
+disallow_untyped_calls = false
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
