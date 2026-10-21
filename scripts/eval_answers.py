@@ -96,7 +96,6 @@ def main() -> int:
                 CrossEncoderReranker(settings.reranker_model),
                 settings.retrieval_candidates,
                 settings.top_k,
-                settings.rerank_min_score,
             )
             answer_question = AnswerQuestion(retrieve, generator)
 

@@ -1,5 +1,12 @@
 # Changelog — rag
 
+## 2026-10-21 — CR-002: relevance gate removed
+- Live smoke test: "Who is the CEO of the company?" / "Who wrote the memo?" answered
+  "not found" (top scores −3.00 / −6.47 < gate −2.59). The latter scores below an
+  unanswerable question, so no threshold works. Gate removed; the LLM decides.
+- Golden q14/q15 added. `eval_retrieval.py` hit@5 12/12, hit@1 11/12;
+  `eval_answers.py` pass^3 15/15, 0 ungrounded.
+
 ## 2026-10-21 — Implementation
 - T-001…T-006 implemented, one commit each (see `_manifest.md`), full gate green per
   ticket (final: 818 unit + 47 integration, 1 live-LLM test skipped without a key).

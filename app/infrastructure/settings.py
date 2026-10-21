@@ -48,9 +48,7 @@ class Settings(BaseSettings):
     # Multilingual cross-encoder chosen by spike S6 on CPU (ADR-014).
     reranker_model: str = Field(default="cross-encoder/mmarco-mMiniLMv2-L12-H384-v1", min_length=1)
     retrieval_candidates: int = Field(default=10, gt=0)  # per search: dense and BM25 each
-    top_k: int = Field(default=5, gt=0)  # chunks sent to the LLM
-    # Relevance gate on the reranker's raw score, calibrated by scripts/eval_retrieval.py.
-    rerank_min_score: float = -2.59
+    top_k: int = Field(default=5, gt=0)  # chunks sent to the LLM, which decides "not found"
     # LLM: any OpenAI-compatible endpoint; Groq by default (ADR-010)
     llm_base_url: str = Field(default="https://api.groq.com/openai/v1", min_length=1)
     llm_api_key: SecretStr | None = None

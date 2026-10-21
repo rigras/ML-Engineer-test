@@ -52,8 +52,8 @@
   <div class="kpis">
     <div class="kpi"><b>1.00 / 0.98</b><span>NER precision / recall on the OCR'd samples</span></div>
     <div class="kpi"><b>54 / 54</b><span>boxes re-OCR'd from their crop = the name</span></div>
-    <div class="kpi"><b>10 / 10</b><span>retrieval hit@1 on golden questions</span></div>
-    <div class="kpi"><b>13 / 13</b><span>answers correct 3 runs in a row (pass^3)</span></div>
+    <div class="kpi"><b>11 / 12</b><span>retrieval hit@1 on golden questions</span></div>
+    <div class="kpi"><b>15 / 15</b><span>answers correct 3 runs in a row (pass^3)</span></div>
     <div class="kpi"><b>0</b><span>sources not backed by a retrieved page</span></div>
   </div>
 
@@ -93,7 +93,7 @@
       <text x="262" y="103" text-anchor="middle" fill="#5b6577" font-size="8.5">OCR → chunk → embed → store</text>
       <rect x="182" y="120" width="160" height="40" rx="6" fill="#fff" stroke="#17202e"/>
       <text x="262" y="137" text-anchor="middle" font-weight="700">AnswerQuestion</text>
-      <text x="262" y="151" text-anchor="middle" fill="#5b6577" font-size="8.5">retrieve → gate → LLM → sources</text>
+      <text x="262" y="151" text-anchor="middle" fill="#5b6577" font-size="8.5">retrieve → rerank → LLM → sources</text>
       <rect x="182" y="174" width="160" height="88" rx="6" fill="#e4f4ea" stroke="#1b7a43"/>
       <text x="262" y="192" text-anchor="middle" font-weight="700" fill="#1b7a43">Domain — pure Python</text>
       <text x="262" y="208" text-anchor="middle" font-size="8.5">px→pt geometry · offset alignment</text>
@@ -220,7 +220,7 @@
       <text x="190" y="122">keep top 5, best first</text>
     </g>
     <rect x="190" y="134" width="330" height="26" rx="5" fill="#fcefe3" stroke="#b5530f"/>
-    <text x="198" y="151" font-size="8.8"><tspan font-weight="700" fill="#b5530f">Gate:</tspan> best score &lt; −2.59 → "not in the documents", <tspan font-weight="700">no LLM call</tspan></text>
+    <text x="198" y="151" font-size="8.8"><tspan font-weight="700" fill="#b5530f">LLM decides:</tspan> passages don't answer → "not in the documents"</text>
     <g font-size="8.8" fill="#17202e">
       <text x="190" y="168">numbered passages wrapped as data + question</text>
       <text x="190" y="186">answer citing [n] / 【n】</text>
@@ -234,7 +234,7 @@
       <p><b>Ingest.</b> Same OCR → OCR layout blocks packed into ≤ 250-token, page-bounded chunks; a unit that does not fit moves <i>whole</i> to the next chunk, so no word is ever cut and nothing passes e5's 512-token window. IDs are <span class="mono">sha256(pdf)[:16]:chunk</span>: a second document can't overwrite the first and re-ingesting is an idempotent upsert.</p>
     </div>
     <div>
-      <p><b>Why hybrid + rerank.</b> Dense search misses exact names and figures; BM25 catches them. e5 similarities sit in a narrow 0.7–1.0 band, useless for "not found"; the reranker's score separates relevant from irrelevant, so it powers the gate (calibrated on the golden questions).</p>
+      <p><b>Why hybrid + rerank.</b> Dense search misses exact names and figures; BM25 catches them. The reranker then puts the best five passages first. Whether they answer the question is the LLM's call: a cut-off on the reranker score was tried and dropped, because questions with and without an answer get overlapping scores.</p>
     </div>
   </div>
 
@@ -304,7 +304,7 @@
       <tr><td>Poor scan, noisy words</td><td>Words below the confidence floor are dropped — no box over noise</td><td><span class="tag t-ok">200</span> fewer names</td></tr>
       <tr><td>LLM slow, rate-limited, down</td><td>SDK timeout + exponential backoff (honours Retry-After); extract/ingest unaffected</td><td><span class="tag t-warn">503/502</span> <span class="mono">llm_*</span></td></tr>
       <tr><td>LLM invents a source</td><td>Impossible: sources come from cited passages that were sent; uncited → not found</td><td><span class="tag t-ok">200</span> grounded</td></tr>
-      <tr><td>Question not covered</td><td>Rerank-score gate, no LLM call</td><td><span class="tag t-ok">200</span> "not found"</td></tr>
+      <tr><td>Question not covered</td><td>The LLM is told to say so; an answer without a citation counts as not found</td><td><span class="tag t-ok">200</span> "not found"</td></tr>
       <tr><td>Prompt injection in a document</td><td>Passages delimited as data; LLM has no tools; viewer renders plain text</td><td><span class="tag t-ok">200</span> (golden probe passes)</td></tr>
       <tr><td>Duplicate ingest / retry</td><td>Content-hash IDs → idempotent upsert</td><td><span class="tag t-ok">200</span> no duplicates</td></tr>
       <tr><td>ALL-CAPS documents (e.g. land registries)</td><td>Known limit: NER relies on capitalization → case-normalize before NER, or a stronger NER</td><td>documented</td></tr>
@@ -316,13 +316,13 @@
     <div>
       <p><span class="mono">AnswerGenerator</span> is a port, so a router is one more adapter — no use case changes. A <b>deterministic</b> router scores the question <i>after</i> retrieval:</p>
       <ul>
-        <li>passages above the gate (1 → lookup, several → synthesis);</li>
+        <li>how many passages score high (1 → lookup, several → synthesis);</li>
         <li>cues for comparison, aggregation or "why";</li>
         <li>question length and language.</li>
       </ul>
     </div>
     <div>
-      <div class="note"><p><b>Simple lookup</b> → small fast model (gpt-oss-20b).<br><b>Multi-passage / reasoning</b> → large model (gpt-oss-120b).<br><b>Escalation:</b> if the small model returns no valid citation while the gate found evidence, retry once on the large model.</p></div>
+      <div class="note"><p><b>Simple lookup</b> → small fast model (gpt-oss-20b).<br><b>Multi-passage / reasoning</b> → large model (gpt-oss-120b).<br><b>Escalation:</b> if the small model returns no valid citation while retrieval scored strong evidence, retry once on the large model.</p></div>
       <p>Thresholds are tuned on the golden Q&amp;A set (pass^3 and cost per answer), never decided by the LLM itself.</p>
     </div>
   </div>

@@ -1,5 +1,4 @@
 import logging
-import math
 
 import pytest
 
@@ -7,8 +6,6 @@ from app.application.retrieve_chunks import RetrieveChunks
 from app.domain.chunking import Chunk
 from app.domain.errors import VectorStoreUnavailable
 from tests.fakes import FakeEmbedder, FakeReranker, InMemoryVectorStore
-
-NO_GATE = -math.inf
 
 
 def _store(*texts: str) -> InMemoryVectorStore:
@@ -24,7 +21,6 @@ def _retrieve(
     embedder: FakeEmbedder | None = None,
     candidates: int = 10,
     top_k: int = 5,
-    min_score: float = NO_GATE,
 ) -> RetrieveChunks:
     return RetrieveChunks(
         embedder=embedder or FakeEmbedder(),
@@ -32,7 +28,6 @@ def _retrieve(
         reranker=reranker,
         candidates=candidates,
         top_k=top_k,
-        min_score=min_score,
     )
 
 
@@ -60,12 +55,14 @@ def test_the_best_reranked_chunks_are_returned_best_first() -> None:
     assert [r.score for r in retrieved] == sorted((r.score for r in retrieved), reverse=True)
 
 
-def test_nothing_relevant_when_the_best_score_is_below_the_gate() -> None:
+def test_low_rerank_scores_still_reach_the_llm() -> None:
+    # No score cut-off: whether the passages answer the question is the LLM's call.
     reranker = FakeReranker(default=-7.5)
 
-    retrieved = _retrieve(_store("budget review"), reranker, min_score=-2.0).execute("budget")
+    retrieved = _retrieve(_store("budget review"), reranker).execute("budget")
 
-    assert retrieved == ()
+    assert [r.chunk.text for r in retrieved] == ["budget review"]
+    assert retrieved[0].score == -7.5
 
 
 def test_empty_store_returns_nothing_without_calling_the_models() -> None:
@@ -103,7 +100,6 @@ def test_completion_log_has_counts_but_no_question_or_chunk_text(
     records = [r for r in caplog.records if r.getMessage() == "retrieval_completed"]
     assert len(records) == 1
     fields = records[0].__dict__
-    assert fields["outcome"] == "relevant"
     assert fields["returned_count"] == 1
     assert "secret question" not in repr(fields)
     assert "Margaret" not in repr(fields)

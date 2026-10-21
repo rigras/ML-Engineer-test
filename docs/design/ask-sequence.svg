@@ -29,7 +29,7 @@
       <text x="190" y="122">keep top 5, best first</text>
     </g>
     <rect x="190" y="134" width="330" height="26" rx="5" fill="#fcefe3" stroke="#b5530f"/>
-    <text x="198" y="151" font-size="8.8"><tspan font-weight="700" fill="#b5530f">Gate:</tspan> best score &lt; −2.59 → "not in the documents", <tspan font-weight="700">no LLM call</tspan></text>
+    <text x="198" y="151" font-size="8.8"><tspan font-weight="700" fill="#b5530f">LLM decides:</tspan> passages don't answer → "not in the documents"</text>
     <g font-size="8.8" fill="#17202e">
       <text x="190" y="168">numbered passages wrapped as data + question</text>
       <text x="190" y="186">answer citing [n] / 【n】</text>

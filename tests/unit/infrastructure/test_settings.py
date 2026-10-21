@@ -62,7 +62,7 @@ def test_rag_ingest_defaults() -> None:
     assert settings.vector_store_collection == "chunks"
     assert settings.reranker_model == "cross-encoder/mmarco-mMiniLMv2-L12-H384-v1"
     assert (settings.retrieval_candidates, settings.top_k) == (10, 5)
-    assert settings.rerank_min_score == -2.59
+    assert not hasattr(settings, "rerank_min_score")  # no score gate: the LLM decides
 
 
 @pytest.mark.parametrize("value", ["0", "512", "600"])

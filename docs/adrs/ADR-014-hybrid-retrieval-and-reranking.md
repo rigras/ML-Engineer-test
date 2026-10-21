@@ -44,8 +44,11 @@ Option 3. Every number is in `Settings`:
    nothing to rebuild at startup or keep in sync after an ingest. No new library.
 3. **Rerank** the de-duplicated union (≤ 20 chunks) with a cross-encoder behind a new
    `Reranker` port; keep the best `TOP_K` (default 5), best first.
-4. **Relevance gate:** best rerank score below `RERANK_MIN_SCORE` ⇒ deterministic "not
-   found in the ingested documents", no LLM call. The threshold is calibrated on the RAG
+4. ~~**Relevance gate:** best rerank score below `RERANK_MIN_SCORE` ⇒ deterministic "not
+   found in the ingested documents", no LLM call.~~ **Removed by CR-002 (2026-10-21):**
+   "Who wrote the memo?" scores −6.47, below an unanswerable question (−4.49), so no
+   threshold separates them; the top-k passages always go to the LLM, which replies
+   "not found" when they don't answer (pass^3 15/15). History of the original gate: The threshold is calibrated on the RAG
    golden set (answerable vs unanswerable questions). *Calibrated 2026-10-21
    (`scripts/eval_retrieval.py`, mmarco, 13 golden questions):* unanswerable top scores
    ≤ −4.49, answerable ≥ −0.70 (the NSF-grant figure question) → **`RERANK_MIN_SCORE =
@@ -72,14 +75,15 @@ repeated runs after warm-up:
 Both bge models break the ≤ 2 s budget by 3–10×; mmarco is the only multilingual model
 inside it. **Re-measured with `scripts/time_reranker.py` (T-004, 2026-10-21, 20 pairs ×
 250 tokens, 10 runs after warm-up):** mmarco load 4.1 s (cached), **p50 1.55 s, p95
-1.67 s** — within budget. Its outputs are raw logits (no sigmoid), so `RERANK_MIN_SCORE` is calibrated
-on that scale. The owner authorized trading the bge model for speed; the reranker step
+1.67 s** — within budget. Its outputs are raw logits (no sigmoid); they only order the
+candidates (no cut-off since CR-002). The owner authorized trading the bge model for speed; the reranker step
 itself is mandatory.
 
 ## Consequences
 
-- ➕ Exact-term matches and meaning matches both reach the reranker; the reranker gives
-  the gate a score that actually separates relevant from irrelevant.
+- ➕ Exact-term matches and meaning matches both reach the reranker, which orders them
+  so the LLM sees the best passages first. Its scores are not used as a relevance
+  cut-off (CR-002): their scale does not separate answerable from unanswerable.
 - ➕ No new library, no in-process index state.
 - ➖ BM25 per query is O(chunks stored): fine for this service, wrong past ~10⁴ chunks.
   Scaling path (DESIGN.md): a store with native hybrid search behind the same

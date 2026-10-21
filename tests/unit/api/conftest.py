@@ -58,7 +58,6 @@ def fake_container(
         FakeReranker(),
         settings.retrieval_candidates,
         settings.top_k,
-        settings.rerank_min_score,
     )
     answer_question = AnswerQuestion(retrieve, generator or FakeAnswerGenerator())
     return Container(

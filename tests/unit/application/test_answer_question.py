@@ -1,5 +1,4 @@
 import logging
-import math
 
 import pytest
 
@@ -22,14 +21,12 @@ SCORES = {CHUNKS[0].text: 9.0, CHUNKS[1].text: 5.0, CHUNKS[2].text: 1.0}
 def _answer(
     generator: FakeAnswerGenerator,
     scores: dict[str, float] = SCORES,
-    min_score: float = -math.inf,
+    chunks: list[Chunk] = CHUNKS,
 ) -> AnswerQuestion:
     store = InMemoryVectorStore()
-    for chunk in CHUNKS:
+    for chunk in chunks:
         store.replace_document(f"{chunk.document_id}-{chunk.chunk_index}", [chunk], [[1.0] * 26])
-    retrieve = RetrieveChunks(
-        FakeEmbedder(), store, FakeReranker(scores), candidates=10, top_k=5, min_score=min_score
-    )
+    retrieve = RetrieveChunks(FakeEmbedder(), store, FakeReranker(scores), candidates=10, top_k=5)
     return AnswerQuestion(retrieve, generator)
 
 
@@ -51,13 +48,23 @@ def test_an_uncited_reply_becomes_not_found() -> None:
     assert answer == Answer(NOT_FOUND_ANSWER, ())
 
 
-def test_no_llm_call_when_nothing_is_relevant() -> None:
+def test_no_llm_call_when_nothing_is_ingested() -> None:
     generator = FakeAnswerGenerator("should never be used [1].")
 
-    answer = _answer(generator, min_score=100.0).execute("What is the parental leave policy?")
+    answer = _answer(generator, chunks=[]).execute("What is the parental leave policy?")
 
     assert answer == Answer(NOT_FOUND_ANSWER, ())
     assert generator.prompts == []
+
+
+def test_the_llm_decides_when_the_passages_do_not_answer() -> None:
+    generator = FakeAnswerGenerator(NOT_FOUND_ANSWER)
+    low_scores = {chunk.text: -9.0 for chunk in CHUNKS}
+
+    answer = _answer(generator, scores=low_scores).execute("What is the parental leave policy?")
+
+    assert answer == Answer(NOT_FOUND_ANSWER, ())
+    assert len(generator.prompts) == 1  # the passages were sent, however low they scored
 
 
 def test_llm_errors_propagate() -> None:

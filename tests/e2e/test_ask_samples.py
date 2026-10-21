@@ -44,18 +44,6 @@ def live_client(
     yield from _ingested_client(env_settings, tmp_path_factory)
 
 
-def test_unanswerable_question_is_not_found_without_calling_the_llm(
-    keyless_client: TestClient,
-) -> None:
-    # No API key: had the gate let this question through, the LLM call would be a 503.
-    response = keyless_client.post(
-        "/api/ask", json={"question": "What is the company's parental leave policy?"}
-    )
-
-    assert response.status_code == 200
-    assert response.json() == {"answer": NOT_FOUND_ANSWER, "sources": []}
-
-
 def test_answerable_question_without_a_key_is_503(keyless_client: TestClient) -> None:
     response = keyless_client.post(
         "/api/ask", json={"question": "Who was promoted to Vice President of Engineering?"}
@@ -74,3 +62,25 @@ def test_live_answer_cites_the_page_that_states_it(live_client: TestClient) -> N
     body = response.json()
     assert "Robert Chen" in body["answer"]
     assert body["sources"] == ["company_memo.pdf, page 0"]
+
+
+def test_live_simple_question_is_answered_even_with_a_low_rerank_score(
+    live_client: TestClient,
+) -> None:
+    # Regression: a rerank-score gate once answered "not found" here although the memo
+    # says "Margaret Thompson, CEO" — the passages now always reach the LLM.
+    response = live_client.post("/api/ask", json={"question": "Who is the CEO of the company?"})
+
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert "Margaret Thompson" in body["answer"]
+    assert "company_memo.pdf, page 0" in body["sources"]
+
+
+def test_live_unanswerable_question_is_not_found(live_client: TestClient) -> None:
+    response = live_client.post(
+        "/api/ask", json={"question": "What is the company's parental leave policy?"}
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json() == {"answer": NOT_FOUND_ANSWER, "sources": []}

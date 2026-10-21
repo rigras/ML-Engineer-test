@@ -68,7 +68,6 @@ def build_container(settings: Settings) -> Container:
         reranker=CrossEncoderReranker(settings.reranker_model),
         candidates=settings.retrieval_candidates,
         top_k=settings.top_k,
-        min_score=settings.rerank_min_score,
     )
     generator = OpenAiCompatibleAnswerGenerator(
         base_url=settings.llm_base_url,

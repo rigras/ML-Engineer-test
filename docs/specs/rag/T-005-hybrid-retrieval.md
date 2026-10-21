@@ -1,5 +1,9 @@
 # Retrieve the most relevant chunks for any question, with a relevance gate
 
+> **Superseded in part by [CR-002](change-requests/CR-002.md):** the relevance gate was
+> removed; retrieval always returns the top-k reranked chunks and the LLM decides
+> "not found". The gate criteria below are history.
+
 ## Metadata
 - **ID**: T-005 · **Version**: v1 · **State**: approved
 - **Traces to**: PRD objective(s) O7, O4 · TRD section(s) §1 (RAG retrieval metric), §2 (Ask flow), §10, §11, ADR-014

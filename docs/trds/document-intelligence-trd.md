@@ -115,9 +115,9 @@ flowchart LR
   ([ADR-015](../adrs/ADR-015-ocr-block-chunking.md)) → embed batch → upsert into vector
   store with deterministic IDs.
 - **Ask** ([ADR-014](../adrs/ADR-014-hybrid-retrieval-and-reranking.md)): validate body
-  → dense top-N ∪ BM25 top-N → cross-encoder rerank → top-k → relevance gate on the
-  rerank score (⇒ deterministic "not found", no LLM call) → LLM answer citing numbered
-  passages `[n]` → `sources` built by code from the cited chunks' metadata (invalid
+  → dense top-N ∪ BM25 top-N → cross-encoder rerank → top-k → LLM answer citing numbered
+  passages `[n]`, or the fixed "not found" sentence when they don't answer (no score
+  gate — CR-002) → `sources` built by code from the cited chunks' metadata (invalid
   citations dropped).
 
 **Pattern: deterministic workflow (prompt-chaining degenerate case: one LLM step).**
@@ -323,8 +323,8 @@ independent) and no product learning loop beyond the offline golden set (§11).
 - **Golden set (`tests/golden/`):** hand-labelled PERSON occurrences (name + page) for
   the 5 sample pages, fuzzy-match pairs (accent/case/OCR-noise/negative), and ~12 Q&A
   items: answerable ones with expected document + page and the expected fact,
-  unanswerable ones (must return "not found"), and one prompt-injection probe. The same
-  set calibrates the rerank gate (ADR-014).
+  unanswerable ones (must return "not found"), and one prompt-injection probe. (It once calibrated a rerank-score
+  gate, removed by CR-002.)
 - **Evals:** NER precision/recall and occurrence recall vs. golden; box self-check
   (crop each returned box at high DPI, re-OCR, fuzzy ≥ 0.90 against the name); RAG
   retrieval hit@k; answer correctness by deterministic grader (expected fact present)
@@ -350,8 +350,8 @@ golden-set entry before the fix.
   bounded by top-k × chunk size (~2.5 k input tokens max).
 - **Levers:** models loaded once per process; OCR results are reused between ingest
   and extract only within a request (no cross-request cache in the take-home; a
-  content-hash cache is the production step); embeddings batched; the relevance gate
-  skips the LLM when nothing relevant was retrieved.
+  content-hash cache is the production step); embeddings batched; the LLM is
+  skipped only when nothing is stored (no score gate — CR-002).
 - **Rate limits:** on Groq's free/base tier (~30 RPM, ~8 K TPM, ~1 K RPD — verify in
   console) and ≤ 2.5 K input tokens per `/ask`, the TPM ceiling allows ≈ 3 asks/minute
   sustained — fine for a demo, the binding constraint in production (→ paid tier,
@@ -443,8 +443,8 @@ golden-set entry before the fix.
 ### ADR-006 — Deterministic workflow, LLM only for answer composition
 - **Context:** compliance domain; outputs must be auditable.
 - **Options:** agent with tools (OCR/search) vs deterministic workflow with one LLM step.
-- **Decision:** workflow; LLM composes the answer only; retrieval, relevance gate, and
-  `sources` are code.
+- **Decision:** workflow; LLM composes the answer only; retrieval and
+  `sources` are code; the LLM may only answer from the passages or say "not found".
 - **Consequences:** + reproducible, no hallucinated sources, cheaper, cut trifecta leg.
   − no multi-hop tool use (not required).
 

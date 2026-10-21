@@ -1,8 +1,9 @@
-"""Retrieve-chunks step of /ask: hybrid candidates → rerank → gate (TRD ADR-014).
+"""Retrieve-chunks step of /ask: hybrid candidates → rerank → top k (TRD ADR-014).
 
 Every question goes through the same pipeline — no question-type special cases:
 meaning-based candidates (dense) plus exact-term candidates (BM25), reranked together by a
-cross-encoder; if even the best one scores below the gate, nothing is relevant.
+cross-encoder. There is no score cut-off: whether the passages answer the question is
+decided by the LLM, which replies "not found" when they don't (CR-002).
 """
 
 import logging
@@ -34,23 +35,18 @@ class RetrieveChunks:
         reranker: Reranker,
         candidates: int,
         top_k: int,
-        min_score: float,
     ) -> None:
         self._embedder = embedder
         self._store = store
         self._reranker = reranker
         self._candidates = candidates
         self._top_k = top_k
-        self._min_score = min_score
 
     def execute(self, question: str) -> tuple[ScoredChunk, ...]:
-        """Up to ``top_k`` chunks, best first; empty when nothing clears the gate."""
+        """Up to ``top_k`` chunks, best first; empty only when nothing is stored."""
         stats: dict[str, object] = {"dense_count": 0, "lexical_count": 0, "top_score": None}
-        ranked = self._rank(question, stats)
-        relevant = bool(ranked) and ranked[0].score >= self._min_score
-        retrieved = tuple(ranked) if relevant else ()
+        retrieved = tuple(self._rank(question, stats))
         stats["returned_count"] = len(retrieved)
-        stats["outcome"] = "relevant" if relevant else "nothing_relevant"
         logger.info("retrieval_completed", extra=stats)
         return retrieved
 

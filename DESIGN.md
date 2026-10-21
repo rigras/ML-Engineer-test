@@ -10,7 +10,7 @@ Python 3.12, hexagonal architecture. Full record: the
 
 | NER P / R | Boxes verified | Retrieval hit@1 | Answers pass^3 | Ungrounded sources |
 |---|---|---|---|---|
-| 1.00 / 0.98 | 54 / 54 | 10 / 10 | 13 / 13 | 0 |
+| 1.00 / 0.98 | 54 / 54 | 11 / 12 | 15 / 15 | 0 |
 
 ## 1. Components
 
@@ -43,14 +43,17 @@ Pages are 0-based; origin top-left (a bottom-left consumer flips
 
 ## 4. Ask sequence
 
-![Ask sequence: hybrid retrieval, rerank, gate, LLM, grounding](docs/design/ask-sequence.svg)
+![Ask sequence: hybrid retrieval, rerank, LLM, grounding](docs/design/ask-sequence.svg)
 
 **Ingest** packs OCR layout blocks into ≤ 250-token, page-bounded chunks (a unit that
 doesn't fit moves whole to the next chunk, so no word is cut) with IDs
 `sha256(pdf)[:16]:chunk` — unique across documents, idempotent on re-ingest. **Hybrid +
 rerank** because dense search misses exact names and figures and BM25 catches them; the
-reranker's score, unlike e5 similarity, separates relevant from irrelevant, so it powers
-the "not found" gate.
+reranker then puts the best five passages first. **Whether those passages answer the
+question is the LLM's call.** A cut-off on the reranker score was tried and dropped:
+questions with and without an answer get overlapping scores, so it rejected easy ones
+like "Who is the CEO?" (CR-002). The LLM still can't invent a source — code builds
+`sources` from the passages it cites.
 
 ## 5. Technology choices and trade-offs
 
@@ -83,7 +86,7 @@ becomes a service with native hybrid search.
 | Noisy scan | Low-confidence words dropped | fewer names, no box over noise |
 | LLM slow / rate-limited / down | SDK timeout + backoff; extract/ingest unaffected | 503/502 `llm_*` |
 | LLM invents a source | Sources built from cited passages only | impossible by construction |
-| Question not covered | Rerank-score gate, no LLM call | "not found" |
+| Question not covered | The LLM is told to say so; an answer without a citation counts as not found | "not found" |
 | Prompt injection | Passages delimited as data, no tools, plain-text UI | golden probe passes |
 | Duplicate ingest | Content-hash IDs | idempotent upsert |
 | ALL-CAPS documents | Known limit of the NER | documented |
@@ -91,8 +94,8 @@ becomes a service with native hybrid search.
 ## 8. Routing between models by query complexity
 
 `AnswerGenerator` is a port, so a router is one more adapter. A **deterministic** router
-scores the question after retrieval (passages above the gate, comparison / aggregation /
-"why" cues, length): simple lookups → small fast model (`gpt-oss-20b`), multi-passage or
+scores the question after retrieval (how many passages score high, comparison /
+aggregation / "why" cues, length): simple lookups → small fast model (`gpt-oss-20b`), multi-passage or
 reasoning → large model (`gpt-oss-120b`); if the small model returns no valid citation
-while the gate found evidence, retry once on the large one. Thresholds are tuned on the
+while retrieval scored strong evidence, retry once on the large one. Thresholds are tuned on the
 golden Q&A set (pass^3 and cost), never decided by the LLM.

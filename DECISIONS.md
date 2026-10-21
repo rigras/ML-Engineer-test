@@ -59,9 +59,14 @@ still starts and `/ask` answers `503 llm_not_configured`. Every setting is liste
 - **Retrieval = dense (e5) ∪ BM25 → cross-encoder rerank → top 5.** Dense search misses
   exact names and figures; BM25 catches them. BM25 is a pure function computed per
   query over the stored chunks, so there is no index to keep in sync (ADR-014).
-- **"Not found" is decided by code.** If the best rerank score is below a threshold
-  calibrated on the golden questions (−2.59), the answer is "not found" and the LLM is
-  not called.
+- **The LLM decides when the answer is not in the documents.** It gets the five best
+  passages and is told to answer only from them, or to say "The answer is not in the
+  ingested documents." I first made that call in code, with a cut-off on the reranker
+  score, and dropped it after testing: it turned away "Who is the CEO?" although the
+  memo names her. Questions that have an answer and questions that don't get
+  overlapping scores ("Who wrote the memo?" scores lower than "Who won the 2022 World
+  Cup?"), so no cut-off can tell them apart (CR-002). The price is one LLM call per
+  question.
 - **Sources can't be hallucinated.** Passages are numbered; the LLM cites `[n]`; code
   turns citations into `"file, page n"` from the passages actually sent. Citations of
   passages not sent are dropped; an answer with no valid citation becomes "not found".
@@ -89,8 +94,8 @@ still starts and `/ask` answers `503 llm_not_configured`. Every setting is liste
   tests, BM25, grounding), use cases on in-memory fakes of every port, adapter tests
   against the real engines, end-to-end through HTTP on the sample PDFs.
 - **Evals (`scripts/`), not just tests:** NER P/R vs a hand-labelled golden set; box
-  self-check (crop each box, re-OCR, fuzzy ≥ 0.90: 54/54); retrieval hit@1 10/10; answers
-  pass^3 13/13 (each question must pass 3 runs in a row) with 0 ungrounded sources.
+  self-check (crop each box, re-OCR, fuzzy ≥ 0.90: 54/54); retrieval hit@1 11/12; answers
+  pass^3 15/15 (each question must pass 3 runs in a row) with 0 ungrounded sources.
   Deterministic graders, so an eval run costs nothing but the LLM calls.
 - **Docker (bonus):** one container — Tesseract and the models baked in, non-root,
   read-only filesystem, healthcheck — with embedded Chroma on a named volume. A separate
@@ -105,7 +110,7 @@ still starts and `/ask` answers `503 llm_not_configured`. Every setting is liste
   property certificate it returned fragments like `GABRIEL JOSE ANOTACION`. The default
   NER and OCR language are English (`DOCINTEL_OCR_LANGUAGES=eng+spa` and a Spanish
   model are config changes).
-- The golden sets are small (5 pages, 13 questions): the numbers show the system fits
+- The golden sets are small (5 pages, 15 questions): the numbers show the system fits
   these documents, not that it generalizes. Each new miss should become a golden entry.
 - Starlette spools the whole upload before our size check; a hard cap belongs in the
   proxy.

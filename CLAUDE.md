@@ -122,8 +122,10 @@ honorifics excluded.
 - openai 3.x is built on `httpx2` (not `httpx`): inject `httpx2.Client(transport=
   httpx2.MockTransport(...))` to fake the LLM. Without `DOCINTEL_LLM_API_KEY` the app
   starts, `/api/ask` answers 503 `llm_not_configured`, `scripts/eval_answers.py` skips.
-- Changing `DOCINTEL_RERANKER_MODEL` changes the score scale: re-run
-  `scripts/eval_retrieval.py` and update `DOCINTEL_RERANK_MIN_SCORE` (ADR-014).
+- There is no rerank-score gate (CR-002): the LLM decides "not found". Don't add a
+  score threshold back — answerable and unanswerable scores overlap on these models.
+  After changing `DOCINTEL_RERANKER_MODEL`, re-run `scripts/eval_retrieval.py` and
+  `scripts/eval_answers.py`.
 - Deliberate deviation from guati-factory `/create-rules`: no `.claude/context/`
   modules — they only duplicated the TRD/CONSTITUTION and aren't auto-loaded; this
   file points to the source sections instead.
