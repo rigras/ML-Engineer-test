@@ -36,7 +36,7 @@ def test_sources_are_the_cited_passages_only() -> None:
     answer = _answer(generator).execute("Who was promoted?")
 
     assert answer == Answer(
-        "Chen was promoted. Muller seconded. Noise.",
+        "Chen was promoted [1]. Muller seconded [2]. Noise.",
         ("company_memo.pdf, page 0", "meeting_minutes.pdf, page 1"),
     )
     assert '<passage n="1">\nRobert Chen' in generator.prompts[0].user

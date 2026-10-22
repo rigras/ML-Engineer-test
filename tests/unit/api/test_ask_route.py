@@ -46,7 +46,7 @@ def test_answer_with_sources_built_from_citations(
 
     assert response.status_code == 200
     assert RAGResponse.model_validate(response.json()) == RAGResponse(
-        answer="Robert Chen.", sources=["company_memo.pdf, page 0"]
+        answer="Robert Chen [1].", sources=["company_memo.pdf, page 0"]
     )
 
 

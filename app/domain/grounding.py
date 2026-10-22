@@ -4,6 +4,7 @@ The LLM only writes text and cites passage numbers ``[n]``; which file and page 
 citation means is decided here, from the chunks that were actually sent. A citation of
 a passage that was not sent is dropped, and a reply with no valid citation is not
 grounded, so it becomes the fixed not-found answer. ``sources`` can't be invented.
+The answer keeps its citations, renumbered to point at ``sources``.
 """
 
 import re
@@ -71,17 +72,36 @@ def build_prompt(question: str, passages: Sequence[str]) -> Prompt:
 
 
 def ground_answer(reply: str, chunks: Sequence[Chunk]) -> GroundedAnswer:
-    """Map ``[n]`` citations to the sent chunks' sources; uncited ⇒ not found."""
+    """Map ``[n]`` citations to the sent chunks' sources; uncited ⇒ not found.
+
+    Citations stay in the text, renumbered so ``[k]`` is ``sources[k-1]``: sources are
+    numbered in order of first citation, and passages of the same page share a number.
+    """
     sources: list[str] = []
     invalid = 0
     for marker in _CITATION.finditer(reply):
-        for number in (int(n) for n in marker.group(1).split(",")):
+        for number in _cited_numbers(marker):
             if not 1 <= number <= len(chunks):
                 invalid += 1
             elif chunks[number - 1].source not in sources:
                 sources.append(chunks[number - 1].source)
     if not sources:
         return GroundedAnswer(NOT_FOUND_ANSWER, (), invalid)
-    text = _UNICODE_SPACE.sub(" ", _CITATION.sub("", reply))
+
+    def renumber(marker: re.Match[str]) -> str:
+        cited = sorted(
+            {
+                sources.index(chunks[number - 1].source) + 1
+                for number in _cited_numbers(marker)
+                if 1 <= number <= len(chunks)
+            }
+        )
+        return f"[{', '.join(str(k) for k in cited)}]" if cited else ""
+
+    text = _UNICODE_SPACE.sub(" ", _CITATION.sub(renumber, reply))
     text = _SPACES.sub(" ", _SPACE_BEFORE_PUNCTUATION.sub(r"\1", text)).strip()
     return GroundedAnswer(text, tuple(sources), invalid)
+
+
+def _cited_numbers(marker: re.Match[str]) -> list[int]:
+    return [int(n) for n in marker.group(1).split(",")]
