@@ -70,6 +70,8 @@ still starts and `/ask` answers `503 llm_not_configured`. Every setting is liste
 - **Sources can't be hallucinated.** Passages are numbered; the LLM cites `[n]`; code
   turns citations into `"file, page n"` from the passages actually sent. Citations of
   passages not sent are dropped; an answer with no valid citation becomes "not found".
+  The answer keeps its citations, renumbered so `[1]` is the first entry of `sources`,
+  `[2]` the second, and so on, so a reader can see which source backs each sentence.
 - **Prompt injection.** Document text is wrapped as delimited data, the LLM has no
   tools, and the viewer renders answers as plain text.
 - **Models:** `multilingual-e5-small` (embedder) and `mmarco-mMiniLMv2-L12` (reranker),
@@ -115,7 +117,7 @@ still starts and `/ask` answers `503 llm_not_configured`. Every setting is liste
 - Starlette spools the whole upload before our size check; a hard cap belongs in the
   proxy.
 - BM25 per query is O(chunks) — fine here, replaced by a store with native hybrid search
-  at scale (DESIGN §4).
+  at scale (DESIGN §5).
 - Byte-identical PDFs with different names collapse into one document.
 - PyMuPDF is AGPL; pypdfium2 fits the same port if that matters commercially.
 

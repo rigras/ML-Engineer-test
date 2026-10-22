@@ -52,22 +52,41 @@ configuration, or replaced by a fake in tests.
 
 | Need | Choice | Why | Trade-off |
 |---|---|---|---|
-| Read scanned text | Tesseract | Free, runs on CPU, gives each word's position | Struggles with poor scans; a cloud OCR could replace it |
+| Read text | Tesseract | Free, runs on CPU, gives each word's position | Weak on poor scans; a cloud OCR could replace it |
 | PDF → images | PyMuPDF | Fast, knows page sizes in points | AGPL licence; pypdfium2 if that matters |
-| Find people | spaCy (large English model) | Measured best on our samples; the small model mistook a project and a magazine for people | ~400 MB more; weak on ALL-CAPS text |
-| Compare names | rapidfuzz | Whole-name similarity, fast | A fixed threshold (0.90): configurable |
-| Search by meaning | e5 (multilingual) + Chroma | Spanish and English, no extra servers | One process writes; a database service at scale |
-| Rank results | Multilingual cross-encoder | ~1.5 s per question on CPU | A stronger model took 21 s on CPU |
-| Write answers | Groq, gpt-oss-120b | Free and fast; any OpenAI-compatible provider by config | Rate limits on the free tier; text leaves the machine |
+| Find people | spaCy, large English | Best on our samples; the small one took a project for a person | ~400 MB more; weak on ALL CAPS |
+| Compare names | rapidfuzz | Whole-name similarity, fast | Fixed 0.90 threshold (configurable) |
+| Search by meaning | e5 multilingual + Chroma | Spanish and English, no extra servers | One writer; a database service at scale |
+| Rank results | Multilingual cross-encoder | ~1.5 s per question on CPU | A stronger one took 21 s on CPU |
+| Write answers | Groq, gpt-oss-120b | Free, fast; any OpenAI-compatible provider | Free-tier limits; text leaves the machine |
 
 ## 5. Scaling to 1000+ PDFs an hour
 
-1000 PDFs an hour is one every 3.6 seconds. Reading a page takes 2–3 seconds of CPU, so
-with 5 pages per PDF that is about 4 busy cores (8 with headroom). The heavy work moves
-out of the request: the upload returns a job id right away, and workers that scale with
-the queue do the reading.
+Today one process does everything: it reads the PDF, embeds it, stores it and answers questions. To scale we follow a document and a question through our own components, find where each one gets stuck, and fix that point.
 
-![Upload, storage, queue, workers, results and vector database](docs/design/scaling.svg)
+| Path | Stage | Where it gets stuck today | Fix at scale |
+|---|---|---|---|
+| Document | Read + find names | The request does the work in the one API process: a few big PDFs at once fill the CPU and the other requests wait | The API stores the PDF and returns a job id; Temporal queues one workflow per PDF; OCR workers pull from the queue and are added as it grows |
+| Document | Embeddings | The model runs on CPU inside the API, loaded again in every process | Model workers on GPU, embedding many chunks per call |
+| Document | Vector DB writes | Embedded Chroma: one process owns its files, so many workers can't write to it | Qdrant service: many writers at once, more replicas as data grows |
+| Question | Hybrid search | Keyword search reads every stored chunk on every question: slower with each document added | Qdrant runs meaning + keyword search on its own indexes; read replicas for many questions |
+| Question | Re-ranking | ~1.5 s of CPU per question inside the API; a burst of questions queues up | Re-ranker on a GPU model server that scores several questions together |
+| Question | LLM | Free tier with a per-minute limit; a burst gets rejected | Paid tier; calls go through a queue capped at the limit, so they wait instead of failing; simple questions use the small model (§7) |
+
+**Temporal** is a workflow engine built on queues and workers. Each PDF is one **workflow**, our recipe: check, read, find names, split, embed, store. Each step that calls an engine is an **activity**, with its own time limit and retries. Activities wait in **task queues** that **workers** pull from.
+
+![API, Temporal, task queues with workers, object storage, results and vector databases](docs/design/scaling.svg)
+
+**Why Temporal and not a plain queue.** It remembers every finished step: a worker that dies mid-PDF is replaced and the PDF carries on from the last finished step. Temporary failures are retried with growing waits; a bad file fails once. The file's fingerprint is the workflow id, so a duplicate upload runs once. A queue can be capped at a provider's limit, and every step stays in history: an audit trail.
+
+**Engines that fall short.** Each engine sits behind its own interface, so a replacement is a plug-in plus a config change, kept only if it wins on a golden set of real documents. Embeddings, re-ranker and LLM already handle Spanish; OCR and the name finder do not.
+
+| Engine | What falls short | At scale |
+|---|---|---|
+| Find people | No real names on an ALL-CAPS Spanish property certificate | Rewrite ALL-CAPS lines in normal case (same length, boxes don't move); then measure a multilingual model such as GLiNER |
+| Read text | English only | Spanish language pack: a config change |
+| Search by meaning | e5-small misses exact names and figures (why keyword search exists) | bge-m3: one multilingual model gives meaning and keyword vectors, both searched in Qdrant |
+| Rank results | The stronger re-ranker took 21 s on CPU | bge-reranker-v2-m3 once it runs on GPU |
 
 ## 6. What can go wrong and what happens
 
@@ -75,20 +94,26 @@ the queue do the reading.
 |---|---|---|
 | Not a PDF, empty, too big, too many pages, password | Checked before any work starts | 4xx with a specific code |
 | OCR engine missing or stuck | Time limit per page | 503 |
-| Poor scan | Words the OCR is unsure of are dropped, so no box is drawn over noise | fewer names |
+| Poor scan | Words the OCR is unsure of are dropped: no box over noise | fewer names |
 | LLM slow, busy or down | Time limit and automatic retries; names and indexing keep working | 503 / 502 |
-| Answer not in the documents | The LLM says so; an answer that cites nothing counts as "not found" | "not found" |
+| Answer not in the documents | The LLM says so; an answer citing nothing is "not found" | "not found" |
 | A document tries to give the LLM orders | Document text is marked as data; the LLM has no tools | normal answer |
 | Same file uploaded twice | Same fingerprint, so it replaces itself | no duplicates |
-| Text in ALL CAPS | Known limit of the name finder | documented |
+| Text in ALL CAPS, other languages | Known limits of the name finder; fix in §5 | fewer names |
 
 ## 7. Choosing a model by question difficulty
 
-Simple lookups ("Who is the CEO?") go to a small, cheap model; questions that compare, add
-up or ask "why" across several passages go to the large one. The choice is made by plain
-rules after the search (how many passages look relevant, words like "compare" or "why"),
-not by another LLM. If the small model gives an answer without citations while the search
-found good evidence, the question is retried once on the large model. The rules are tuned
-on our test questions, for accuracy and cost.
+An **orchestrator** in front of the models picks one, checks its answer and escalates when
+needed: a short Temporal workflow the API waits on, deciding in plain code (cheap,
+reproducible).
+
+- **Classify from the question's words:** "compare", "why", "total", "difference" or more
+  than one name → large model; otherwise → small, cheap model. Search, embeddings and
+  re-ranking are shared; each model is a config entry with its own capped queue.
+- **Check, then escalate once:** if the small model says "not found" or cites nothing
+  valid, the large one gets the same passages. Citations are the signal we trust;
+  re-ranker scores are not (answerable and unanswerable questions score alike).
+- **Measure:** log route, model and cost per question; tune the rules on questions kept
+  apart from the test set.
 
 Details: [DECISIONS.md](DECISIONS.md) (decisions, limitations, use of AI).
